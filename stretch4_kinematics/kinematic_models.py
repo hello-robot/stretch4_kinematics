@@ -52,6 +52,46 @@ def _load_stretch4_urdf(calibrated: bool = False) -> pin.Model:
     return pin.buildModelFromXML(planar_urdf_string)
 
 
+def _compute_limit_interpolation_ratio(
+    val: float,
+    lower: float,
+    upper: float,
+    vel: float,
+    margin_lower: float,
+    margin_upper: float,
+) -> float:
+    """
+    Computes the interpolation ratio (0.0 to 1.0) indicating how far the joint
+    has penetrated the limit margin while moving in the direction of that limit.
+
+    If moving in the negative direction and below the lower margin,
+    returns a value between 0.0 and 1.0.
+
+    If moving in the positive direction and above the upper margin,
+    returns a value between 0.0 and 1.0.
+
+    Otherwise, returns 0.0.
+
+    Args:
+        val (float): The current value of the joint position.
+        lower (float): The lower limit of the joint position.
+        upper (float): The upper limit of the joint position.
+        vel (float): The velocity of the joint position.
+        margin_lower (float): The margin below the lower limit to start blending.
+        margin_upper (float): The margin above the upper limit to start blending.
+
+    Returns:
+        float: The interpolation ratio (0.0 to 1.0).
+    """
+
+    if vel < 0 and val <= lower + margin_lower:
+        return np.clip(((lower + margin_lower) - val) / margin_lower, 0.0, 1.0)
+    elif vel > 0 and val >= upper - margin_upper:
+        return np.clip((val - (upper - margin_upper)) / margin_upper, 0.0, 1.0)
+    return 0.0
+
+
+
 @dataclass
 class StretchJointPositions:
     """
@@ -394,7 +434,7 @@ class BaseKinematics:
 
     def differential_ik(
         self,
-        q: np.ndarray,
+        q: StretchJointPositions,
         target_frame: str,
         v_desired: np.ndarray,
     ) -> StretchJointVelocities:
@@ -404,7 +444,7 @@ class BaseKinematics:
         Computes the joint velocities required to achieve the desired Cartesian velocity.
 
         Args:
-            q (np.ndarray): The robot's joint configuration.
+            q (StretchJointPositions): The robot's joint configuration.
             target_frame (str): The name of the frame to compute the velocity relationship for.
             v_desired (np.ndarray): The desired velocity of the target frame (translation and rotation).
                                     Vector of len 6, where the first 3 elements are the linear velocity
@@ -429,25 +469,110 @@ class ToolFrameKinematics(BaseKinematics):
         """
         super().__init__(use_calibrated_urdf)
 
-    def differential_ik(self, q: np.ndarray, target_frame: str, v_desired: np.ndarray) -> StretchJointVelocities:
+        # configuration for weighted-least-squares damping
+        self._jacobian_weights = np.array([
+            50.0,  # Base X (discouraged)
+            50.0,  # Base Y (discouraged)
+            1.0,   # Base Theta (encouraged)
+            1.0,   # Lift (encouraged)
+            1.0    # Arm (encouraged)
+        ])
+        
+        # Scaling factor for the Jacobian weights when a joint limit is approached.
+        self._jacobian_weight_scaler_joint_limits = 1000.0
+
+        damping_coefficient = 1.e-4
+        self._damping_matrix = np.eye(3) * damping_coefficient
+
+    def _compute_constrained_jacobian_weights(
+        self,
+        q: StretchJointPositions,
+        dq_candidate: np.ndarray,
+        lift_blend_margin_meters: float = 0.20,
+        arm_blend_margin_extension: float = 0.20,
+        arm_blend_power_extension: float = 2.0,
+        arm_blend_margin_retraction: float = 0.05,
+    ) -> np.ndarray:
+        """
+        Computes constrained Jacobian pinv weights based on the current joint configuration.
+        
+        Based on active set enforcement / continuous redundancy resolution.
+
+        References:
+            - TODO
+        
+        Args:
+            q (StretchJointPositions): The robot's joint configuration.
+            dq_candidate (np.ndarray): Candidate joint velocities (5-DOF).
+            lift_blend_margin_meters (float): Distance in meters from the lift joint limits to start blending.
+            arm_blend_margin_extension (float): Distance in meters from the arm extension limit to start blending.
+            arm_blend_power_extension (float): Power to scale the arm blend penalty.
+            arm_blend_margin_retraction (float): Distance in meters from the arm retraction limit to start blending.
+        
+        Returns:
+            np.ndarray: The constrained Jacobian pinv weights.
+        """
+        # Get initial weights from model config
+        W = self._jacobian_weights.copy()
+
+        # Get joint position limit indices from model
+        lift_j_id = self.model.getJointId("lift_joint")
+        arm_j_id = self.model.getJointId("arm_l4_joint")
+
+        lift_idx_q = self.model.joints[lift_j_id].idx_q
+        arm_idx_q = self.model.joints[arm_j_id].idx_q
+
+        lift_lower = self.model.lowerPositionLimit[lift_idx_q]
+        lift_upper = self.model.upperPositionLimit[lift_idx_q]
+        arm_lower = self.model.lowerPositionLimit[arm_idx_q]
+        arm_upper = self.model.upperPositionLimit[arm_idx_q]
+
+        # 1. Lift joint limit check (col index 3)
+        ratio_lift = _compute_limit_interpolation_ratio(
+            q.lift, lift_lower, lift_upper, dq_candidate[3],
+            lift_blend_margin_meters, lift_blend_margin_meters
+        )
+        if ratio_lift > 0.0:
+            W[3] = 1.0 + (self._jacobian_weight_scaler_joint_limits - 1.0) * ratio_lift
+
+        # 2. Arm joint limit check (col index 4)
+        ratio_arm = _compute_limit_interpolation_ratio(
+            q.arm, arm_lower, arm_upper, dq_candidate[4],
+            arm_blend_margin_retraction, arm_blend_margin_extension
+        )
+        if ratio_arm > 0.0:
+            # Apply a higher penalty for violating the arm joint limit
+            # This makes the arm more "stiff" when it's close to its limits
+            ratio_arm = ratio_arm ** arm_blend_power_extension
+
+            W[4] = 1.0 + (self._jacobian_weight_scaler_joint_limits - 1.0) * ratio_arm
+
+        return W
+
+    def differential_ik(self, q: StretchJointPositions, target_frame: str, v_desired: np.ndarray) -> StretchJointVelocities:
         """
         Computes the joint velocities required to achieve the desired Cartesian velocity
         in the tool frame.
 
+        Uses a weighted pseudoinverse to solve for the joint velocities, preferring to 
+        use the base rotation and lift DOFs over base translation when possible.
+
         Args:
-            q (np.ndarray): The robot's joint configuration.
+            q (StretchJointPositions): The robot's joint configuration.
             target_frame (str): The name of the frame to compute the velocity relationship for.
-            v_desired (np.ndarray): The desired linear velocity of the target frame.
-                                    Vector of length 3 (forward, left, up).
+            v_desired (np.ndarray): The desired 6D twist of the target frame.
+                                    The linear velocity component (first 3 elements) is used.
         
         Returns:
             StretchJointVelocities: Joint velocities required to achieve the target velocity.
         """
+        q_pin = q.to_pinocchio_q()
+
         # Jacobian in the gripper's LOCAL frame
         J_full = pin.computeFrameJacobian(
             self.model,
             self.data,
-            q,
+            q_pin,
             self.model.getFrameId(target_frame),
             pin.ReferenceFrame.LOCAL
         )
@@ -471,8 +596,24 @@ class ToolFrameKinematics(BaseKinematics):
         # truncate Jacobian to only translational DOFs
         J_mode1_trans = J_mode1_full[:, cols]
 
-        # invert the 3x5 Jacobian using pseudoinverse. dq is joint velocities.
-        dq = np.linalg.pinv(J_mode1_trans) @ v_desired
+        # Extract linear velocity components from 6D desired twist
+        v_linear = v_desired[:3]
+
+        # First pass: compute weighted least squares solution with initial weights
+        W_pinv = np.diag(1.0 / self._jacobian_weights)
+        J_W_JT = J_mode1_trans @ W_pinv @ J_mode1_trans.T
+        J_W_JT_damped = J_W_JT + self._damping_matrix
+        J_pinv = W_pinv @ J_mode1_trans.T @ np.linalg.inv(J_W_JT_damped)
+        dq = J_pinv @ v_linear
+
+        # Second pass: compute active set weights and resolve if weights change
+        W = self._compute_constrained_jacobian_weights(q, dq)
+        if not np.array_equal(W, self._jacobian_weights):
+            W_pinv = np.diag(1.0 / W)
+            J_W_JT = J_mode1_trans @ W_pinv @ J_mode1_trans.T
+            J_W_JT_damped = J_W_JT + self._damping_matrix
+            J_pinv = W_pinv @ J_mode1_trans.T @ np.linalg.inv(J_W_JT_damped)
+            dq = J_pinv @ v_linear
 
         # Map dq back to the full joint velocity space (model.nv)
         v_full = np.zeros(self.model.nv)

@@ -115,8 +115,8 @@ def test_kinematics_library():
     # 3. Differential Kinematics Example
     try:
         # Desired end-effector linear velocity in tool frame: [v_forward, v_left, v_up]
-        v_desired = np.array([0.1, 0.0, 0.0])
-        dq = k1.differential_ik(q, target_frame, v_desired)
+        v_desired = np.array([0.1, 0.05, -0.1, 0.0, 0.0, 0.0])
+        dq = k1.differential_ik(joint_position, target_frame, v_desired)
         print("  Differential IK:")
         dq.print()
     except NotImplementedError:
