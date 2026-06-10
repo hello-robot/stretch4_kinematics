@@ -11,6 +11,7 @@ from stretch4_urdf.utils.urdf_utils_generate_ik_urdfs import (
     _make_ik_urdf,
 )
 
+
 def _load_stretch4_urdf(calibrated: bool = False) -> pin.Model:
     """
     Returns the URDF model for the Stretch 4 robot, modified with a planar base joint,
@@ -120,8 +121,10 @@ class StretchJointPositions:
             wrist_roll=q[8]
         )
 
-    def to_numpy(self):
+    def to_numpy(self) -> np.ndarray:
         """
+        Converts the joint positions to a standard 8-element NumPy array.
+
         Returns:
             np.ndarray: The 8-element joint configuration vector.
         """
@@ -158,8 +161,10 @@ class StretchJointPositions:
             wrist_roll=q[7],
         )
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         """
+        Converts the joint positions to an 8-element configuration dictionary.
+
         Returns:
             dict: The 8-element joint configuration dictionary.
         """
@@ -228,7 +233,10 @@ class StretchJointVelocities:
 
     def to_numpy(self) -> np.ndarray:
         """
-        Converts the velocities to a standard 8-element numpy array matching Pinocchio's v vector.
+        Converts the joint velocities to a standard 8-element NumPy array.
+
+        Returns:
+            np.ndarray: The 8-element joint velocity vector.
         """
         return np.array([
             self.base_x,
@@ -244,7 +252,13 @@ class StretchJointVelocities:
     @classmethod
     def from_numpy(cls, v: np.ndarray) -> "StretchJointVelocities":
         """
-        Creates a StretchJointVelocities instance from Pinocchio's 8-element velocity vector v.
+        Creates a StretchJointVelocities instance from Pinocchio's 8-element velocity vector.
+
+        Args:
+            v (np.ndarray): Pinocchio's 8-element velocity vector.
+
+        Returns:
+            StretchJointVelocities: Instance of StretchJointVelocities.
         """
         return cls(
             base_x=v[0],
@@ -270,7 +284,7 @@ class StretchJointVelocities:
         """
         self.pretty_print()
 
-        
+
 class BaseKinematics:
     def __init__(self, use_calibrated_urdf: bool = False):
         """
@@ -281,6 +295,27 @@ class BaseKinematics:
         """
         self.model = _load_stretch4_urdf(use_calibrated_urdf)
         self.data = self.model.createData()
+
+        # Define translation and rotation joints
+        self.translation_joints = [
+            "mobile_base_planar_joint", 
+            "lift_joint", 
+            "arm_l4_joint"
+        ]
+        self.translation_joint_ids = [
+            self.model.getJointId(n) for n in self.translation_joints \
+            if self.model.existJointName(n)
+        ]
+        
+        self.rotation_joints = [
+            "wrist_yaw_joint", 
+            "wrist_pitch_joint", 
+            "wrist_roll_joint"
+        ]
+        self.rotation_joint_ids = [
+            self.model.getJointId(n) for n in self.rotation_joints \
+            if self.model.existJointName(n)
+        ]
 
     def forward(self, q_state: StretchJointPositions, target_frame: str) -> pin.SE3:
         """
@@ -376,7 +411,7 @@ class BaseKinematics:
                                     and the last 3 elements are the angular velocity.
         
         Returns:
-            StretchJointPositions: Joint velocities required to achieve the target velocity.
+            StretchJointVelocities: Joint velocities required to achieve the target velocity.
         """
         raise NotImplementedError
 
@@ -394,7 +429,7 @@ class ToolFrameKinematics(BaseKinematics):
         """
         super().__init__(use_calibrated_urdf)
 
-    def differential_ik(self, q: np.ndarray, target_frame: str, v_desired: np.ndarray) -> np.ndarray:
+    def differential_ik(self, q: np.ndarray, target_frame: str, v_desired: np.ndarray) -> StretchJointVelocities:
         """
         Computes the joint velocities required to achieve the desired Cartesian velocity
         in the tool frame.
@@ -402,17 +437,12 @@ class ToolFrameKinematics(BaseKinematics):
         Args:
             q (np.ndarray): The robot's joint configuration.
             target_frame (str): The name of the frame to compute the velocity relationship for.
-            v_desired (np.ndarray): The desired velocity of the target frame (translation and rotation).
-                                    Vector of len 6, where the first 3 elements are the linear velocity
-                                    and the last 3 elements are the angular velocity.
+            v_desired (np.ndarray): The desired linear velocity of the target frame.
+                                    Vector of length 3 (forward, left, up).
         
         Returns:
-            np.ndarray: Joint velocities (length model.nv) required to achieve the target velocity.
+            StretchJointVelocities: Joint velocities required to achieve the target velocity.
         """
-        # print all joints
-        for joint_id, (name, parent) in enumerate(zip(self.model.names, self.model.parents)):
-            print(f"Joint [{joint_id}]: {name} | Parent ID: {parent}")
-        exit()
         # Jacobian in the gripper's LOCAL frame
         J_full = pin.computeFrameJacobian(
             self.model,
@@ -432,11 +462,10 @@ class ToolFrameKinematics(BaseKinematics):
         J_mode1_full = np.vstack([v_fwd_row, v_left_row, v_up_row])
     
         # Extract columns corresponding to the 5 translational DOFs
-        # TODO FIX
         cols = []
-        for j_id in translation_joint_ids:
-            idx_v = model.joints[j_id].idx_v
-            nv = model.joints[j_id].nv
+        for j_id in self.translation_joint_ids:
+            idx_v = self.model.joints[j_id].idx_v
+            nv = self.model.joints[j_id].nv
             cols.extend(range(idx_v, idx_v + nv))
 
         # truncate Jacobian to only translational DOFs
@@ -445,7 +474,11 @@ class ToolFrameKinematics(BaseKinematics):
         # invert the 3x5 Jacobian using pseudoinverse. dq is joint velocities.
         dq = np.linalg.pinv(J_mode1_trans) @ v_desired
 
-        return dq
+        # Map dq back to the full joint velocity space (model.nv)
+        v_full = np.zeros(self.model.nv)
+        v_full[cols] = dq
+
+        return StretchJointVelocities.from_numpy(v_full)
 
 
 class PlanarToolFrameKinematics(BaseKinematics):

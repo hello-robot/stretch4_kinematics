@@ -114,10 +114,11 @@ def test_kinematics_library():
 
     # 3. Differential Kinematics Example
     try:
-        # Desired end-effector twist: [v_x, v_y, v_z, w_x, w_y, w_z]
-        v_desired = np.array([0.1, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # Desired end-effector linear velocity in tool frame: [v_forward, v_left, v_up]
+        v_desired = np.array([0.1, 0.0, 0.0])
         dq = k1.differential_ik(q, target_frame, v_desired)
-        print(f"  Differential IK: {dq}")
+        print("  Differential IK:")
+        dq.print()
     except NotImplementedError:
         print("  [Diff IK] differential_ik() is defined but not yet implemented.")
 
