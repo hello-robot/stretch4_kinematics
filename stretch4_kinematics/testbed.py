@@ -6,6 +6,8 @@ import yourdfpy
 from stretch4_urdf import get_urdf, get_urdf_calibrated
 
 from stretch4_kinematics.kinematic_models import (
+    StretchJointPositions,
+    StretchJointVelocities,
     ToolFrameKinematics,
     PlanarToolFrameKinematics,
     CylindricalToolFrameKinematics,
@@ -93,7 +95,8 @@ def test_kinematics_library():
     
     # 1. Forward Kinematics Example
     try:
-        pose = k1.forward(q, target_frame)
+        joint_position = StretchJointPositions.from_pinocchio_q(q)
+        pose = k1.forward(joint_position, target_frame)
         print(f"  Forward Kinematics: {pose}")
     except NotImplementedError:
         print("  [FK] forward() is defined but not yet implemented.")
@@ -101,8 +104,11 @@ def test_kinematics_library():
     # 2. Inverse Kinematics Example
     try:
         target_pose = pin.SE3.Identity()
+        target_pose.translation = np.array([0.5, 0.5, 0.5])
+        target_pose.rotation = np.eye(3)
         q_sol = k1.inverse(target_frame, target_pose)
-        print(f"  Inverse Kinematics: {q_sol}")
+        print(f"  Inverse Kinematics to {target_frame} at pose {target_pose} (SE3):")
+        q_sol.print()
     except NotImplementedError:
         print("  [IK] inverse() is defined but not yet implemented.")
 

@@ -1,11 +1,20 @@
+from dataclasses import dataclass, fields
+
+import io
 import numpy as np
 import pinocchio as pin
+from yourdfpy import urdf as ud
 
 from stretch4_urdf import get_urdf, get_urdf_calibrated
+from stretch4_urdf.utils.urdf_utils_generate_ik_urdfs import (
+    add_virtual_planar_joint,
+    _make_ik_urdf,
+)
 
 def _load_stretch4_urdf(calibrated: bool = False) -> pin.Model:
     """
-    Returns the URDF model for the Stretch 4 robot.
+    Returns the URDF model for the Stretch 4 robot, modified with a planar base joint,
+    clipped joint limits, rigidified non-IK joints, and merged arm joints.
     
     Args:
         calibrated (bool): Whether to use the calibrated URDF model.
@@ -26,10 +35,242 @@ def _load_stretch4_urdf(calibrated: bool = False) -> pin.Model:
             tool_name = "eoa_wrist_dw4_tool_sg4",
         )
 
+    # Parse URDF string using yourdfpy
+    robot_urdf = ud.URDF.load(io.BytesIO(urdf_string.encode('utf-8')))
+
+    # Apply IK modifications: clip joint limits, rigidify non-IK joints, and merge arm
+    robot_urdf = _make_ik_urdf(robot_urdf, is_merge_arm=True)
+
+    # Add virtual planar (SE(2)) joint to the base in-place
+    add_virtual_planar_joint(robot_urdf)
+
+    # Write back to XML string
+    planar_urdf_string = robot_urdf.write_xml_string()
+
     # Load the model directly from the XML string
-    return pin.buildModelFromXML(urdf_string)
+    return pin.buildModelFromXML(planar_urdf_string)
 
 
+@dataclass
+class StretchJointPositions:
+    """
+    Represents the 8-element joint positions of Stretch 4.
+    Models the omnidirectional base as SE(2): two translations and a rotation.
+
+    Contains helper functions to convert to/from:
+        - Pinocchio's 9-element configuration vector q
+        - 8-element numpy array
+        - 8-element dictionary
+    """
+    # Mobile Base (physical translations and rotation)
+    base_x: float = 0.0
+    base_y: float = 0.0
+    base_theta: float = 0.0  # Physical angle in radians
+    
+    # Arm translation
+    lift: float = 0.0
+    arm: float = 0.0  # Merged arm extension (meters)
+    
+    # End of Arm (wrist joints in radians)
+    wrist_yaw: float = 0.0
+    wrist_pitch: float = 0.0
+    wrist_roll: float = 0.0
+
+    def to_pinocchio_q(self) -> np.ndarray:
+        """
+        Converts the physical joint state into Pinocchio's 9-element configuration vector `q`.
+        Layout: [x, y, cos(theta), sin(theta), lift, arm, wrist_yaw, wrist_pitch, wrist_roll]
+
+        Returns:
+            np.ndarray: Pinocchio's 9-element configuration vector.
+        """
+        q = np.zeros(9)
+        q[0] = self.base_x
+        q[1] = self.base_y
+        q[2] = np.cos(self.base_theta)
+        q[3] = np.sin(self.base_theta)
+        q[4] = self.lift
+        q[5] = self.arm
+        q[6] = self.wrist_yaw
+        q[7] = self.wrist_pitch
+        q[8] = self.wrist_roll
+        return q
+
+    @classmethod
+    def from_pinocchio_q(cls, q: np.ndarray) -> "StretchJointPositions":
+        """
+        Creates a StretchJointPositions instance from a 9-element Pinocchio configuration vector `q`.
+
+        Args:
+            q (np.ndarray): Pinocchio's 9-element configuration vector.
+
+        Returns:
+            StretchJointPositions: Instance of StretchJointPositions.
+        """
+        # Recover physical theta from cos(theta) (q[2]) and sin(theta) (q[3])
+        theta = np.arctan2(q[3], q[2])
+        return cls(
+            base_x=q[0],
+            base_y=q[1],
+            base_theta=theta,
+            lift=q[4],
+            arm=q[5],
+            wrist_yaw=q[6],
+            wrist_pitch=q[7],
+            wrist_roll=q[8]
+        )
+
+    def to_numpy(self):
+        """
+        Returns:
+            np.ndarray: The 8-element joint configuration vector.
+        """
+        return np.array([
+            self.base_x,
+            self.base_y,
+            self.base_theta,
+            self.lift,
+            self.arm,
+            self.wrist_yaw,
+            self.wrist_pitch,
+            self.wrist_roll,
+        ])
+
+    @classmethod
+    def from_numpy(cls, q: np.ndarray) -> "StretchJointPositions":
+        """
+        Creates a StretchJointPositions instance from an 8-element joint configuration vector `q`.
+
+        Args:
+            q (np.ndarray): The 8-element joint configuration vector.
+
+        Returns:
+            StretchJointPositions: Instance of StretchJointPositions.
+        """
+        return cls(
+            base_x=q[0],
+            base_y=q[1],
+            base_theta=q[2],
+            lift=q[3],
+            arm=q[4],
+            wrist_yaw=q[5],
+            wrist_pitch=q[6],
+            wrist_roll=q[7],
+        )
+
+    def to_dict(self):
+        """
+        Returns:
+            dict: The 8-element joint configuration dictionary.
+        """
+        return {
+            "base_x": self.base_x,
+            "base_y": self.base_y,
+            "base_theta": self.base_theta,
+            "lift": self.lift,
+            "arm": self.arm,
+            "wrist_yaw": self.wrist_yaw,
+            "wrist_pitch": self.wrist_pitch,
+            "wrist_roll": self.wrist_roll,
+        }
+
+    @classmethod
+    def from_dict(cls, joint_dict: dict) -> "StretchJointPositions":
+        """
+        Creates a StretchJointPositions instance from a dictionary of joint configurations.
+
+        Args:
+            joint_dict (dict): Dictionary containing the joint configurations.
+
+        Returns:
+            StretchJointPositions: Instance of StretchJointPositions.
+        """
+        return cls(
+            base_x=joint_dict["base_x"],
+            base_y=joint_dict["base_y"],
+            base_theta=joint_dict["base_theta"],
+            lift=joint_dict["lift"],
+            arm=joint_dict["arm"],
+            wrist_yaw=joint_dict["wrist_yaw"],
+            wrist_pitch=joint_dict["wrist_pitch"],
+            wrist_roll=joint_dict["wrist_roll"],
+        )
+
+    def pretty_print(self) -> None:
+        """
+        Pretty-prints each joint name and value on sequential lines.
+        """
+        for field in fields(self):
+            print(f"{field.name}: {getattr(self, field.name):.4f}")
+
+    def print(self) -> None:
+        """
+        Pretty-prints each joint name and value on sequential lines.
+        """
+        self.pretty_print()
+
+
+@dataclass
+class StretchJointVelocities:
+    """
+    Represents the 8-element joint velocity vector of the Stretch 4 robot.
+    """
+    base_x: float = 0.0      # Linear velocity along X (m/s)
+    base_y: float = 0.0      # Linear velocity along Y (m/s)
+    base_theta: float = 0.0  # Angular velocity (rad/s)
+    
+    lift: float = 0.0        # Prismatic velocity (m/s)
+    arm: float = 0.0         # Prismatic velocity (m/s)
+    
+    wrist_yaw: float = 0.0   # Rotational velocity (rad/s)
+    wrist_pitch: float = 0.0 # Rotational velocity (rad/s)
+    wrist_roll: float = 0.0  # Rotational velocity (rad/s)
+
+    def to_numpy(self) -> np.ndarray:
+        """
+        Converts the velocities to a standard 8-element numpy array matching Pinocchio's v vector.
+        """
+        return np.array([
+            self.base_x,
+            self.base_y,
+            self.base_theta,
+            self.lift,
+            self.arm,
+            self.wrist_yaw,
+            self.wrist_pitch,
+            self.wrist_roll,
+        ])
+
+    @classmethod
+    def from_numpy(cls, v: np.ndarray) -> "StretchJointVelocities":
+        """
+        Creates a StretchJointVelocities instance from Pinocchio's 8-element velocity vector v.
+        """
+        return cls(
+            base_x=v[0],
+            base_y=v[1],
+            base_theta=v[2],
+            lift=v[3],
+            arm=v[4],
+            wrist_yaw=v[5],
+            wrist_pitch=v[6],
+            wrist_roll=v[7],
+        )
+
+    def pretty_print(self) -> None:
+        """
+        Pretty-prints each joint name and velocity value on sequential lines.
+        """
+        for field in fields(self):
+            print(f"{field.name}: {getattr(self, field.name):.4f}")
+
+    def print(self) -> None:
+        """
+        Pretty-prints each joint name and velocity value on sequential lines.
+        """
+        self.pretty_print()
+
+        
 class BaseKinematics:
     def __init__(self, use_calibrated_urdf: bool = False):
         """
@@ -41,25 +282,33 @@ class BaseKinematics:
         self.model = _load_stretch4_urdf(use_calibrated_urdf)
         self.data = self.model.createData()
 
-    def forward(self, q: np.ndarray, target_frame: str) -> pin.SE3:
+    def forward(self, q_state: StretchJointPositions, target_frame: str) -> pin.SE3:
         """
         Computes the forward kinematics for the given joint configuration.
 
         Args:
-            q (np.ndarray): The robot's joint configuration.
+            q_state (StretchJointPositions): The robot's joint configuration.
             target_frame (str): The name of the frame to compute the forward kinematics for.
         
         Returns:
             pin.SE3: The pose of the target frame in the world frame.
         """
+        q = q_state.to_pinocchio_q()
         pin.forwardKinematics(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
         
         frame_id = self.model.getFrameId(target_frame)
         return self.data.oMf[frame_id]
 
-    def inverse(self, target_frame: str, target_pose: pin.SE3, q_guess: np.ndarray = None,
-                max_iter: int = 200, eps: float = 1e-4, damp: float = 1e-6) -> np.ndarray:
+    def inverse(
+        self,
+        target_frame: str,
+        target_pose: pin.SE3,
+        q_guess: np.ndarray = None,
+        max_iter: int = 200,
+        eps: float = 1e-4,
+        damp: float = 1e-6
+    ) -> StretchJointPositions:
         """
         Computes the numerical inverse kinematics using the standard Closed-Loop 
         Inverse Kinematics (CLIK) algorithm with Levenberg-Marquardt damping.
@@ -76,7 +325,7 @@ class BaseKinematics:
             damp (float): Damping factor for pseudo-inverse.
         
         Returns:
-            np.ndarray: The joint configuration solving the IK.
+            StretchJointPositions: The joint configuration solving the IK.
         """
         q = pin.neutral(self.model) if q_guess is None else q_guess.copy()
         frame_id = self.model.getFrameId(target_frame)
@@ -105,12 +354,18 @@ class BaseKinematics:
             # update joint configuration
             q = pin.integrate(self.model, q, dq)
 
-        return q
+        joint_state = StretchJointPositions.from_pinocchio_q(q)
+        return joint_state
 
-    def differential_ik(self, q: np.ndarray, target_frame: str, v_desired: np.ndarray) -> np.ndarray:
+    def differential_ik(
+        self,
+        q: np.ndarray,
+        target_frame: str,
+        v_desired: np.ndarray,
+    ) -> StretchJointVelocities:
         """
         Abstract method to be implemented depending on the specific control mode / kinematic structure.
-        
+
         Computes the joint velocities required to achieve the desired Cartesian velocity.
 
         Args:
@@ -121,7 +376,7 @@ class BaseKinematics:
                                     and the last 3 elements are the angular velocity.
         
         Returns:
-            np.ndarray: Joint velocities required to achieve the target velocity.
+            StretchJointPositions: Joint velocities required to achieve the target velocity.
         """
         raise NotImplementedError
 
@@ -138,6 +393,59 @@ class ToolFrameKinematics(BaseKinematics):
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
         """
         super().__init__(use_calibrated_urdf)
+
+    def differential_ik(self, q: np.ndarray, target_frame: str, v_desired: np.ndarray) -> np.ndarray:
+        """
+        Computes the joint velocities required to achieve the desired Cartesian velocity
+        in the tool frame.
+
+        Args:
+            q (np.ndarray): The robot's joint configuration.
+            target_frame (str): The name of the frame to compute the velocity relationship for.
+            v_desired (np.ndarray): The desired velocity of the target frame (translation and rotation).
+                                    Vector of len 6, where the first 3 elements are the linear velocity
+                                    and the last 3 elements are the angular velocity.
+        
+        Returns:
+            np.ndarray: Joint velocities (length model.nv) required to achieve the target velocity.
+        """
+        # print all joints
+        for joint_id, (name, parent) in enumerate(zip(self.model.names, self.model.parents)):
+            print(f"Joint [{joint_id}]: {name} | Parent ID: {parent}")
+        exit()
+        # Jacobian in the gripper's LOCAL frame
+        J_full = pin.computeFrameJacobian(
+            self.model,
+            self.data,
+            q,
+            self.model.getFrameId(target_frame),
+            pin.ReferenceFrame.LOCAL
+        )
+        
+        # Extract linear velocity components
+        # Local axes: X (forward), Y (left), Z (up)
+        v_fwd_row = J_full[0, :]
+        v_left_row = J_full[1, :]
+        v_up_row = J_full[2, :]
+    
+        # We want the output vector to align with: [v_forward, v_left, v_up]
+        J_mode1_full = np.vstack([v_fwd_row, v_left_row, v_up_row])
+    
+        # Extract columns corresponding to the 5 translational DOFs
+        # TODO FIX
+        cols = []
+        for j_id in translation_joint_ids:
+            idx_v = model.joints[j_id].idx_v
+            nv = model.joints[j_id].nv
+            cols.extend(range(idx_v, idx_v + nv))
+
+        # truncate Jacobian to only translational DOFs
+        J_mode1_trans = J_mode1_full[:, cols]
+
+        # invert the 3x5 Jacobian using pseudoinverse. dq is joint velocities.
+        dq = np.linalg.pinv(J_mode1_trans) @ v_desired
+
+        return dq
 
 
 class PlanarToolFrameKinematics(BaseKinematics):
