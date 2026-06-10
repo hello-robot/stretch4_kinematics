@@ -52,23 +52,65 @@ class BaseKinematics:
         Returns:
             pin.SE3: The pose of the target frame in the world frame.
         """
-        raise NotImplementedError
+        pin.forwardKinematics(self.model, self.data, q)
+        pin.updateFramePlacements(self.model, self.data)
+        
+        frame_id = self.model.getFrameId(target_frame)
+        return self.data.oMf[frame_id]
 
-    def inverse(self, target_frame: str, target_pose: pin.SE3) -> np.ndarray:
+    def inverse(self, target_frame: str, target_pose: pin.SE3, q_guess: np.ndarray = None,
+                max_iter: int = 200, eps: float = 1e-4, damp: float = 1e-6) -> np.ndarray:
         """
-        Computes the inverse kinematics for the given joint configuration.
+        Computes the numerical inverse kinematics using the standard Closed-Loop 
+        Inverse Kinematics (CLIK) algorithm with Levenberg-Marquardt damping.
+        
+        Reference:
+            https://gepettoweb.laas.fr/doc/stack-of-tasks/pinocchio/devel/doxygen-html/md_doc_b-examples_i-inverse-kinematics.html
 
         Args:
             target_frame (str): The name of the frame to compute the inverse kinematics for.
-            target_pose (pin.SE3): The pose of the target frame in the world frame.
+            target_pose (pin.SE3): The desired pose of the target frame in the world frame.
+            q_guess (np.ndarray, optional): Initial joint configuration guess. Defaults to neutral configuration.
+            max_iter (int): Maximum number of iterations.
+            eps (float): Convergence tolerance.
+            damp (float): Damping factor for pseudo-inverse.
         
         Returns:
-            np.ndarray: The joint configuration.
+            np.ndarray: The joint configuration solving the IK.
         """
-        raise NotImplementedError
+        q = pin.neutral(self.model) if q_guess is None else q_guess.copy()
+        frame_id = self.model.getFrameId(target_frame)
+        
+        for i in range(max_iter):
+            # compute current fk solution
+            pin.forwardKinematics(self.model, self.data, q)
+            pin.updateFramePlacements(self.model, self.data)
+            
+            # compute error between target and current pose
+            dMi = target_pose.actInv(self.data.oMf[frame_id])
+            err = pin.log(dMi).vector
+            
+            # stop if error is small
+            if np.linalg.norm(err) < eps:
+                break
+            
+            # compute Jacobian
+            J = pin.computeFrameJacobian(self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL)
+            
+            # compute velocity correction using Levenberg-Marquardt damping
+            # This conditions the Jacobian to prevent singularities
+            J_JT = J @ J.T + damp * np.eye(6)
+            dq = -J.T @ np.linalg.solve(J_JT, err)
+            
+            # update joint configuration
+            q = pin.integrate(self.model, q, dq)
+
+        return q
 
     def differential_ik(self, q: np.ndarray, target_frame: str, v_desired: np.ndarray) -> np.ndarray:
         """
+        Abstract method to be implemented depending on the specific control mode / kinematic structure.
+        
         Computes the joint velocities required to achieve the desired Cartesian velocity.
 
         Args:
