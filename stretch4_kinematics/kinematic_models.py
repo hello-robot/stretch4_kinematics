@@ -8,7 +8,7 @@ from yourdfpy import urdf as ud
 from stretch4_urdf import get_urdf, get_urdf_calibrated
 from stretch4_urdf.utils.urdf_utils_generate_ik_urdfs import (
     add_virtual_planar_joint,
-    _make_ik_urdf,
+    _make_ik_urdf,  # TODO: change name to be public
 )
 
 
@@ -325,10 +325,10 @@ class StretchJointVelocities:
         self.pretty_print()
 
 
-class BaseKinematics:
+class StretchKinematics:
     def __init__(self, use_calibrated_urdf: bool = False):
         """
-        Base class for handling the Pinocchio boilerplate for a robot.
+        Base class for handling the Pinocchio boilerplate for Stretch 4.
 
         Args:
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
@@ -456,7 +456,7 @@ class BaseKinematics:
         raise NotImplementedError
 
 
-class ToolFrameKinematics(BaseKinematics):
+class ToolFrameKinematics(StretchKinematics):
     # old "mode 1"
     def __init__(self, use_calibrated_urdf: bool = False):
         """
@@ -587,6 +587,7 @@ class ToolFrameKinematics(BaseKinematics):
         J_mode1_full = np.vstack([v_fwd_row, v_left_row, v_up_row])
     
         # Extract columns corresponding to the 5 translational DOFs
+        # TODO: move this to constructor
         cols = []
         for j_id in self.translation_joint_ids:
             idx_v = self.model.joints[j_id].idx_v
@@ -622,7 +623,7 @@ class ToolFrameKinematics(BaseKinematics):
         return StretchJointVelocities.from_numpy(v_full)
 
 
-class PlanarToolFrameKinematics(BaseKinematics):
+class PlanarToolFrameKinematics(StretchKinematics):
     # old "mode 2"
     def __init__(self, use_calibrated_urdf: bool = False):
         """
@@ -637,7 +638,7 @@ class PlanarToolFrameKinematics(BaseKinematics):
         super().__init__(use_calibrated_urdf)
 
 
-class CylindricalToolFrameKinematics(BaseKinematics):
+class CylindricalToolFrameKinematics(StretchKinematics):
     # old "mode 4"
     def __init__(self, use_calibrated_urdf: bool = False):
         """
