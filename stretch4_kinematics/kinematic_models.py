@@ -109,13 +109,31 @@ class StretchJointPositions:
     base_theta: float = 0.0  # Physical angle in radians
     
     # Arm translation
-    lift: float = 0.0
+    lift: float = 0.5
     arm: float = 0.0  # Merged arm extension (meters)
     
     # End of Arm (wrist joints in radians)
     wrist_yaw: float = 0.0
     wrist_pitch: float = 0.0
     wrist_roll: float = 0.0
+
+    def get_joint_names(self) -> list[str]:
+        """
+        Returns the joint names in the order corresponding to the numpy array.
+        
+        Returns:
+            list[str]: The joint names.
+        """
+        return [
+            "base_x",
+            "base_y",
+            "base_theta",
+            "lift",
+            "arm",
+            "wrist_yaw",
+            "wrist_pitch",
+            "wrist_roll",
+        ]
 
     def to_pinocchio_q(self) -> np.ndarray:
         """
@@ -270,6 +288,24 @@ class StretchJointVelocities:
     wrist_yaw: float = 0.0   # Rotational velocity (rad/s)
     wrist_pitch: float = 0.0 # Rotational velocity (rad/s)
     wrist_roll: float = 0.0  # Rotational velocity (rad/s)
+
+    def get_joint_names(self) -> list[str]:
+        """
+        Returns the joint names in the order corresponding to the numpy array.
+        
+        Returns:
+            list[str]: The joint names.
+        """
+        return [
+            "base_x",
+            "base_y",
+            "base_theta",
+            "lift",
+            "arm",
+            "wrist_yaw",
+            "wrist_pitch",
+            "wrist_roll",
+        ]
 
     def to_numpy(self) -> np.ndarray:
         """
