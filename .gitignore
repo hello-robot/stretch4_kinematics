@@ -136,3 +136,11 @@ cython_debug/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+<<<<<<< Updated upstream
+# data
+*.png
+=======
+# Data
+*.png
+>>>>>>> Stashed changes
