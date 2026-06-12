@@ -27,13 +27,76 @@ class StretchVelocityController:
     Provides utilities for enforcing joint velocity and position limits.
     """
     def __init__(self):
-        # Base limits or configurations can go here
-        pass
+        # joint velocity limits
+        self._v_max = StretchJointVelocities(
+            base_x=0.15,
+            base_y=0.15,
+            base_theta=np.deg2rad(60),
+            lift=0.1,
+            arm=0.1,
+            wrist_yaw=np.deg2rad(60),
+            wrist_pitch=np.deg2rad(60),
+            wrist_roll=np.deg2rad(60)
+        )
 
-    def _enforce_joint_velocity_limits(self, v_desired: StretchJointVelocities) -> StretchJointVelocities:
+    def _enforce_joint_velocity_limits(
+        self,
+        v_desired: StretchJointVelocities,
+    ) -> StretchJointVelocities:
+        """
+        Enforces joint velocity limits on the desired velocity commands.
+        
+        Args:
+            v_desired (StretchJointVelocities): The desired velocity commands.
+            
+        Returns:
+            StretchJointVelocities: The limited velocity commands.
+        """
+
         v_limited = copy.deepcopy(v_desired)
-        # TODO: Implement limits
-        return v_limited        
+
+        # clip each joint
+        v_limited.base_x = np.clip(
+            v_limited.base_x,
+            -self._v_max.base_x,
+            self._v_max.base_x
+        )
+        v_limited.base_y = np.clip(
+            v_limited.base_y,
+            -self._v_max.base_y,
+            self._v_max.base_y
+        )
+        v_limited.base_theta = np.clip(
+            v_limited.base_theta,
+            -self._v_max.base_theta,
+            self._v_max.base_theta
+        )
+        v_limited.lift = np.clip(
+            v_limited.lift,
+            -self._v_max.lift,
+            self._v_max.lift
+        )
+        v_limited.arm = np.clip(
+            v_limited.arm,
+            -self._v_max.arm,
+            self._v_max.arm
+        )
+        v_limited.wrist_yaw = np.clip(
+            v_limited.wrist_yaw,
+            -self._v_max.wrist_yaw,
+            self._v_max.wrist_yaw
+        )
+        v_limited.wrist_pitch = np.clip(
+            v_limited.wrist_pitch,
+            -self._v_max.wrist_pitch,
+            self._v_max.wrist_pitch
+        )
+        v_limited.wrist_roll = np.clip(
+            v_limited.wrist_roll,
+            -self._v_max.wrist_roll,
+            self._v_max.wrist_roll
+        )
+        return v_limited
 
     def _enforce_joint_position_limits(self, q_desired: StretchJointPositions) -> StretchJointPositions:
         q_limited = copy.deepcopy(q_desired)
@@ -49,7 +112,14 @@ class FlyingGripperController(StretchVelocityController):
         super().__init__()
         self._kinematics_solver = ToolFrameKinematics()
         self._state = FlyingGripperState.IDLE
-        self._kp = np.array([1.0, 1.0, 1.0, 0.5, 0.5, 0.5])
+        self._kp = np.array([
+            0.1,
+            0.1,
+            0.1,
+            0.01,
+            0.01,
+            0.01,
+        ])
 
     def _compute_error(
         self,
@@ -93,12 +163,13 @@ class FlyingGripperController(StretchVelocityController):
         """
         error = self._compute_error(current_pos, target_pose)
         v_desired = self._kp * error
-        v_limited = self._enforce_joint_velocity_limits(v_desired)
 
         dq = self._kinematics_solver.differential_ik(
             current_pos,
             "tool_attachment_site_link",
-            v_limited
+            v_desired
         )
+
+        dq_limited = self._enforce_joint_velocity_limits(dq)
         
-        return dq, self._state
+        return dq_limited, self._state

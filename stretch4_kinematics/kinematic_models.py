@@ -352,7 +352,7 @@ class StretchJointVelocities:
         Pretty-prints each joint name and velocity value on sequential lines.
         """
         for field in fields(self):
-            print(f"{field.name}: {getattr(self, field.name):.4f}")
+            print(f"{field.name}_dot: {getattr(self, field.name):.4f}")
 
     def print(self) -> None:
         """

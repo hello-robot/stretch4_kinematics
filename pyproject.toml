@@ -19,12 +19,6 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["stretch4_kinematics*"]
 
-[tool.uv.workspace]
-members = [
-    "../stretch4_body",
-    "../stretch4_urdf"
-]
-
 [tool.uv.sources]
 hello-robot-stretch4-urdf = { workspace = true }
 hello-robot-stretch4-body = { workspace = true }

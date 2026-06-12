@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pinocchio as pin
+import time
 
 from stretch4_kinematics.stretch_interface import StretchInterface
 
@@ -63,17 +64,51 @@ class FlyingGripperScript:
         print(f"Target Pose Translation:      {target_pose.translation}")
 
     def test_move_to_position(self):
+        target_pose = pin.SE3.Identity()
+        target_pose.translation = np.array([1.1, 0.1, 0.95])
+        target_pose.rotation = np.eye(3)
+        
+        current_pos = StretchJointPositions()
+        current_vel = StretchJointVelocities()
+
         rate_hz = 20.0
         dt = 1.0 / rate_hz
 
+        self.robot_interface.reset_odometry_offset()
+
         while True:
             try:
-                # top_time = time.time()
+                top_time = time.time()
 
                 current_pos = self.robot_interface.get_joint_position()
-                current_pos.pretty_print()
+                # current_pos.pretty_print()
 
-                break
+                current_vel = self.robot_interface.get_joint_velocity()
+                # current_vel.pretty_print()
+
+                v_limited, state = self.controller.update(dt, current_pos, current_vel, target_pose)
+                print(f"Next Velocity: ")
+                v_limited.pretty_print()
+
+                # wrist dt comp
+                v_limited.wrist_yaw *= dt
+                v_limited.wrist_pitch *= dt
+                v_limited.wrist_roll *= dt
+
+                GAIN = 2.
+                v_limited.base_x *= GAIN
+                v_limited.base_y *= GAIN
+                v_limited.base_theta *= GAIN
+                v_limited.lift *= GAIN
+                v_limited.arm *= GAIN
+                v_limited.wrist_yaw *= GAIN
+                v_limited.wrist_pitch *= GAIN
+                v_limited.wrist_roll *= GAIN
+
+                self.robot_interface.cmd_velocities(v_limited)
+
+                bottom = time.time()
+                time.sleep(dt - (bottom - top_time))
 
             except KeyboardInterrupt:
                 break
