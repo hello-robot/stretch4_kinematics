@@ -5,6 +5,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "hello-robot-stretch4-urdf>=2026.5.27",
+    "hello-robot-stretch4-body",
     "numpy>=2.2.6",
     "pin>=4.0.0",
     "yourdfpy>=0.0.60",
@@ -17,6 +18,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["stretch4_kinematics*"]
+
+[tool.uv.workspace]
+members = [
+    "../stretch4_body",
+    "../stretch4_urdf"
+]
 
 [tool.uv.sources]
 hello-robot-stretch4-urdf = { workspace = true }

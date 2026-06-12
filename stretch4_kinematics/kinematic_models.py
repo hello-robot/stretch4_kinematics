@@ -520,6 +520,13 @@ class ToolFrameKinematics(StretchKinematics):
         damping_coefficient = 1.e-4
         self._damping_matrix = np.eye(3) * damping_coefficient
 
+        # Extract columns corresponding to the 5 translational DOFs for Jacobian math
+        self.translation_joint_col_idx = []
+        for j_id in self.translation_joint_ids:
+            idx_v = self.model.joints[j_id].idx_v
+            nv = self.model.joints[j_id].nv
+            self.translation_joint_col_idx.extend(range(idx_v, idx_v + nv))
+
     def _compute_constrained_jacobian_weights(
         self,
         q: StretchJointPositions,
@@ -621,17 +628,9 @@ class ToolFrameKinematics(StretchKinematics):
     
         # We want the output vector to align with: [v_forward, v_left, v_up]
         J_mode1_full = np.vstack([v_fwd_row, v_left_row, v_up_row])
-    
-        # Extract columns corresponding to the 5 translational DOFs
-        # TODO: move this to constructor
-        cols = []
-        for j_id in self.translation_joint_ids:
-            idx_v = self.model.joints[j_id].idx_v
-            nv = self.model.joints[j_id].nv
-            cols.extend(range(idx_v, idx_v + nv))
 
         # truncate Jacobian to only translational DOFs
-        J_mode1_trans = J_mode1_full[:, cols]
+        J_mode1_trans = J_mode1_full[:, self.translation_joint_col_idx]
 
         # Extract linear velocity components from 6D desired twist
         v_linear = v_desired[:3]
@@ -654,9 +653,17 @@ class ToolFrameKinematics(StretchKinematics):
 
         # Map dq back to the full joint velocity space (model.nv)
         v_full = np.zeros(self.model.nv)
-        v_full[cols] = dq
+        v_full[self.translation_joint_col_idx] = dq
 
-        return StretchJointVelocities.from_numpy(v_full)
+        # Convert back to velocity wrapper for return
+        v = StretchJointVelocities.from_numpy(v_full)
+
+        # Apply direct wrist yaw compensation instead of including within Jacobian
+        # This allows the differential IK to focus on positioning the tool frame
+        # without having to tune damping / weights to include rotation
+        v.wrist_yaw = -v.base_theta
+
+        return v
 
 
 class PlanarToolFrameKinematics(StretchKinematics):

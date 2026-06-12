@@ -7,12 +7,8 @@ from stretch4_kinematics.kinematic_models import (
     ToolFrameKinematics,
 )
 
-def test_toolframe_kinematics():    
+def test_toolframe_kinematics(q_init: StretchJointPositions, file_prefix: str=""):    
     kinematics = ToolFrameKinematics()
-    q_init = StretchJointPositions()
-    # Set a realistic nominal starting configuration so we're not starting on limits
-    q_init.lift = 0.5
-    q_init.arm = 0.25
     joint_names = q_init.get_joint_names()
 
     # number of samples for each sweep
@@ -22,12 +18,12 @@ def test_toolframe_kinematics():
     velocities = 0.1 * np.eye(6)
     twist_names = ["V_x", "V_y", "V_z", "W_x", "W_y", "W_z"]
 
-    fig, axes = plt.subplots(6, 8, figsize=(24, 18), sharex="col", sharey="row")
+    # fig, axes = plt.subplots(6, 8, figsize=(24, 18), sharex="col", sharey="row")
 
-    # # only test Vxyz
-    # velocities = velocities[:3, :]
-    # twist_names = twist_names[:3]
-    # fig, axes = plt.subplots(3, 8, figsize=(30, 12), sharex="col", sharey="row")
+    # only test Vxyz
+    velocities = velocities[:3, :]
+    twist_names = twist_names[:3]
+    fig, axes = plt.subplots(3, 8, figsize=(30, 12), sharex="col", sharey="row")
 
     for i, v in enumerate(velocities):
         for j, joint_name in enumerate(joint_names):
@@ -107,13 +103,37 @@ def test_toolframe_kinematics():
     plt.tight_layout(rect=[0, 0, 0.9, 0.96])
     
     # Save the plot for inspection
-    plt.savefig("differential_kinematics_profile.png", dpi=300)
-    print("Saved profiling plot to differential_kinematics_profile.png")
+    filename = f"{file_prefix}differential_kinemarics_profile.png"
+    plt.savefig(filename, dpi=300)
+    print(f"Saved profiling plot to {filename}")
     plt.show()
     
 
 def main():
-    test_toolframe_kinematics()
+    q_0 = StretchJointPositions()
+    q_0.arm = 0.2
+    q_0.lift = 0.5
+
+    q_1 = StretchJointPositions()
+    q_1.arm = 0.2
+    q_1.lift = 0.5
+    q_1.wrist_pitch = -np.pi / 4.
+
+    q_2 = StretchJointPositions()
+    q_2.arm = 0.2
+    q_2.lift = 0.5
+    q_2.wrist_pitch = -np.pi / 4.
+    q_2.wrist_roll = np.pi / 3.
+
+    q_3 = StretchJointPositions()
+    q_3.arm = 0.2
+    q_3.lift = 0.5
+    q_3.wrist_pitch = -np.pi / 4.
+    q_3.wrist_roll = np.pi / 3.
+    q_3.wrist_yaw = np.pi / 4.
+
+    for i, q in enumerate([q_0, q_1, q_2, q_3]):
+        test_toolframe_kinematics(q, f"cfg_{i}_")
 
 if __name__ == "__main__":
     main()
