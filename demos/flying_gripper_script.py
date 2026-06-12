@@ -111,17 +111,6 @@ class FlyingGripperScript:
                 print(f"Next Velocity: ")
                 v_limited.pretty_print()
 
-                GAIN = 0.5
-                LOOKAHEAD = 2.
-                v_limited.base_x *= GAIN
-                v_limited.base_y *= GAIN
-                v_limited.base_theta *= GAIN
-                v_limited.lift *= GAIN
-                v_limited.arm *= GAIN
-                v_limited.wrist_yaw *= GAIN * LOOKAHEAD
-                v_limited.wrist_pitch *= GAIN * LOOKAHEAD
-                v_limited.wrist_roll *= GAIN * LOOKAHEAD
-
                 self.robot_interface.cmd_velocities(v_limited)
 
                 bottom = time.time()
