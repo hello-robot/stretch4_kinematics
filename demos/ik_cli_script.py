@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import numpy as np
 import pinocchio as pin
+import time
 
 from stretch4_kinematics.kinematic_models import StretchKinematics, StretchJointPositions
+from stretch4_kinematics.stretch_interface import StretchInterface
 
 def prompt_float(name: str) -> float:
     """Prompts the user for a float value with input validation."""
@@ -23,7 +25,6 @@ def main():
     # 2. Try to connect to the robot interface to get the current joint positions as a guess
     print("\nAttempting to connect to Stretch interface to get initial joint state guess...")
     try:
-        from stretch4_kinematics.stretch_interface import StretchInterface
         interface = StretchInterface()
         interface.reset_odometry_offset()
         current_joint_state = interface.get_joint_position()
@@ -48,7 +49,7 @@ def main():
     target_pose = pin.SE3(R, t)
 
     # 5. Solve using kinematic_models.StretchKinematics.inverse()
-    target_frame = "tool_attachment_site_link"
+    target_frame = "grasp_center_link"
     q_guess = current_joint_state.to_pinocchio_q()
     
     print(f"\nSolving IK for target pose relative to base...")
@@ -65,11 +66,22 @@ def main():
     # 7. Prompt to confirm move
     confirm = input("\nEnter y to confirm move to joint state: ").strip().lower()
     if confirm == 'y':
-        # Placeholder move to pose call (user will implement manually next)
-        print("\n[PLACEHOLDER] Command sent to move robot to the solved joint state.")
-        # E.g. interface.move_to(ik_solution)
+        interface.reset_odometry_offset()
+        interface.move_to_pose(ik_solution)
+        time.sleep(3.)
     else:
         print("\nMove cancelled.")
+
+    # Compute and print error
+    print("\n=== Error Analysis ===")
+    post_move_joint_state = interface.get_joint_position()
+    post_move_pose = solver.forward(
+        post_move_joint_state,
+        target_frame
+    )
+    error = pin.log(post_move_pose.actInv(target_pose)).vector
+    print(f"Position error (m): {error[:3]}")
+    print(f"Rotational error (rad): {error[3:]}")
 
     # Clean up interface if connected
     if 'interface' in locals():
