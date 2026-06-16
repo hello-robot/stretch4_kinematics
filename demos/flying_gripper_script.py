@@ -102,9 +102,8 @@ class FlyingGripperScript:
                 top_time = time.time()
 
                 current_pos = self.robot_interface.get_joint_position()
-                # current_pos.pretty_print()
-
                 current_vel = self.robot_interface.get_joint_velocity()
+                # current_pos.pretty_print()
                 # current_vel.pretty_print()
 
                 v_limited, state = self.controller.update(dt, current_pos, current_vel, target_pose)
