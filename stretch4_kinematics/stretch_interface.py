@@ -27,6 +27,7 @@ class StretchInterface:
         self.max_wrist_yaw_vel = np.deg2rad(60.0)
         self.max_wrist_pitch_vel = np.deg2rad(60.0)
         self.max_wrist_roll_vel = np.deg2rad(60.0)
+        self._last_cmd_time = None
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
@@ -45,6 +46,12 @@ class StretchInterface:
     def get_base_odometry(self, robot_status: dict) -> tuple[float, float, float]:
         """
         Extracts the base odometry from the robot status dictionary.
+
+        Args:
+            robot_status: The robot status dictionary.
+
+        Returns:
+            The base odometry as a tuple of (base_x, base_y, base_theta).
         """
         base_status = robot_status.get('omnibase', robot_status.get('base', {}))
         raw_x = base_status.get('x', 0.0)
@@ -231,11 +238,25 @@ class StretchInterface:
 
         # End of Arm / Wrist Joints Velocity Command (Requires Homing per joint)
         if hasattr(self.robot, "end_of_arm"):
+            # Estimate dt dynamically based on calling frequency (default to 0.05s / 20Hz if first call)
+            import time
+            now = time.time()
+            if hasattr(self, "_last_cmd_time") and self._last_cmd_time is not None:
+                dt = np.clip(now - self._last_cmd_time, 0.001, 1.0)
+            else:
+                dt = 0.05
+            self._last_cmd_time = now
+
             for joint_name, val in [("wrist_yaw", wrist_yaw), ("wrist_pitch", wrist_pitch), ("wrist_roll", wrist_roll)]:
                 try:
                     if joint_name in self.robot.end_of_arm.joints:
                         if self.robot.end_of_arm.is_homed(joint_name):
-                            self.robot.end_of_arm.move_by(joint_name, val)  # TODO: replace with vel control later
+                            # val is velocity (rad/s), move_by expects position displacement (rad)
+                            self.robot.end_of_arm.move_by(
+                                joint_name,
+                                val * dt,
+                                val
+                                )  # TODO: replace with vel control later
                         else:
                             self.robot.logger.warning(f"Wrist joint {joint_name} is not homed; velocity command ignored.")
                 except Exception as e:
@@ -248,6 +269,9 @@ class StretchInterface:
             self.robot.logger.error(f"Failed to push velocity commands to the robot: {e}")
 
     def cmd_zero_velocity(self) -> None:
+        """
+        Commands zero velocity to all joints of the robot.
+        """
         self.cmd_velocities(
             StretchJointVelocities(
                 base_x=0.0,
