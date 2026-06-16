@@ -1,4 +1,5 @@
 from dataclasses import dataclass, fields
+from enum import Enum, auto
 
 import io
 import numpy as np
@@ -7,12 +8,24 @@ from yourdfpy import urdf as ud
 
 from stretch4_urdf import get_urdf, get_urdf_calibrated
 from stretch4_urdf.utils.urdf_utils_generate_ik_urdfs import (
+    add_virtual_rotary_joint,
     add_virtual_planar_joint,
     _make_ik_urdf,  # TODO: change name to be public
 )
 
+class Stretch4IKModes(Enum):
+    """
+    Represents the different URDF configurations for the Stretch 4 URDF.
+    """
+    BASE_FIXED = auto()   # base cannot move
+    BASE_ROTATE = auto()  # base can only rotate about z-axis
+    BASE_PLANAR = auto()  # base can translate and rotate (SE(2))
 
-def _load_stretch4_urdf(calibrated: bool = False) -> pin.Model:
+
+def _load_stretch4_urdf(
+    ik_mode: Stretch4IKModes = Stretch4IKModes.BASE_PLANAR,
+    calibrated: bool = False
+) -> pin.Model:
     """
     Returns the URDF model for the Stretch 4 robot, modified with a planar base joint,
     clipped joint limits, rigidified non-IK joints, and merged arm joints.
@@ -42,8 +55,11 @@ def _load_stretch4_urdf(calibrated: bool = False) -> pin.Model:
     # Apply IK modifications: clip joint limits, rigidify non-IK joints, and merge arm
     robot_urdf = _make_ik_urdf(robot_urdf, is_merge_arm=True)
 
-    # Add virtual planar (SE(2)) joint to the base in-place
-    add_virtual_planar_joint(robot_urdf)
+    # Add virtual joint to the base in-place
+    if ik_mode == Stretch4IKModes.BASE_ROTATE:
+        add_virtual_rotary_joint(robot_urdf)
+    elif ik_mode == Stretch4IKModes.BASE_PLANAR:
+        add_virtual_planar_joint(robot_urdf)
 
     # Write back to XML string
     planar_urdf_string = robot_urdf.write_xml_string()
@@ -135,49 +151,116 @@ class StretchJointPositions:
             "wrist_roll",
         ]
 
-    def to_pinocchio_q(self) -> np.ndarray:
+    def to_pinocchio_q(
+        self,
+        mode: Stretch4IKModes = Stretch4IKModes.BASE_PLANAR
+    ) -> np.ndarray:
         """
-        Converts the physical joint state into Pinocchio's 9-element configuration vector `q`.
-        Layout: [x, y, cos(theta), sin(theta), lift, arm, wrist_yaw, wrist_pitch, wrist_roll]
-
-        Returns:
-            np.ndarray: Pinocchio's 9-element configuration vector.
-        """
-        q = np.zeros(9)
-        q[0] = self.base_x
-        q[1] = self.base_y
-        q[2] = np.cos(self.base_theta)
-        q[3] = np.sin(self.base_theta)
-        q[4] = self.lift
-        q[5] = self.arm
-        q[6] = self.wrist_yaw
-        q[7] = self.wrist_pitch
-        q[8] = self.wrist_roll
-        return q
-
-    @classmethod
-    def from_pinocchio_q(cls, q: np.ndarray) -> "StretchJointPositions":
-        """
-        Creates a StretchJointPositions instance from a 9-element Pinocchio configuration vector `q`.
+        Converts the physical joint state into Pinocchio's configuration vector `q`
+        based on the selected IK base mode.
 
         Args:
-            q (np.ndarray): Pinocchio's 9-element configuration vector.
+            mode (Stretch4IKModes): The base mode of the model.
+
+        Returns:
+            np.ndarray: Pinocchio's configuration vector.
+        """
+        if mode == Stretch4IKModes.BASE_PLANAR:
+            return np.array([
+                self.base_x,
+                self.base_y,
+                np.cos(self.base_theta),
+                np.sin(self.base_theta),
+                self.lift,
+                self.arm,
+                self.wrist_yaw,
+                self.wrist_pitch,
+                self.wrist_roll
+            ])
+        elif mode == Stretch4IKModes.BASE_ROTATE:
+            return np.array([
+                self.base_theta,
+                self.lift,
+                self.arm,
+                self.wrist_yaw,
+                self.wrist_pitch,
+                self.wrist_roll
+            ])
+        elif mode == Stretch4IKModes.BASE_FIXED:
+            return np.array([
+                self.lift,
+                self.arm,
+                self.wrist_yaw,
+                self.wrist_pitch,
+                self.wrist_roll
+            ])
+        else:
+            raise ValueError(f"Unsupported IK mode: {mode}")
+
+    @classmethod
+    def from_pinocchio_q(
+        cls,
+        q: np.ndarray,
+        mode: Stretch4IKModes = None
+    ) -> "StretchJointPositions":
+        """
+        Creates a StretchJointPositions instance from a Pinocchio configuration vector `q`.
+        Auto-detects the mode if not specified, based on the length of q.
+
+        Args:
+            q (np.ndarray): Pinocchio's configuration vector.
+            mode (Stretch4IKModes, optional): The base mode of the model (handles variable length)
 
         Returns:
             StretchJointPositions: Instance of StretchJointPositions.
         """
-        # Recover physical theta from cos(theta) (q[2]) and sin(theta) (q[3])
-        theta = np.arctan2(q[3], q[2])
-        return cls(
-            base_x=q[0],
-            base_y=q[1],
-            base_theta=theta,
-            lift=q[4],
-            arm=q[5],
-            wrist_yaw=q[6],
-            wrist_pitch=q[7],
-            wrist_roll=q[8]
-        )
+        if mode is None:
+            if len(q) == 9:
+                mode = Stretch4IKModes.BASE_PLANAR
+            elif len(q) == 6:
+                mode = Stretch4IKModes.BASE_ROTATE
+            elif len(q) == 5:
+                mode = Stretch4IKModes.BASE_FIXED
+            else:
+                raise ValueError(f"Cannot auto-detect IK mode for configuration vector of length {len(q)}")
+
+        if mode == Stretch4IKModes.BASE_PLANAR:
+            # Recover physical theta from cos(theta) (q[2]) and sin(theta) (q[3])
+            theta = np.arctan2(q[3], q[2])
+            return cls(
+                base_x=q[0],
+                base_y=q[1],
+                base_theta=theta,
+                lift=q[4],
+                arm=q[5],
+                wrist_yaw=q[6],
+                wrist_pitch=q[7],
+                wrist_roll=q[8]
+            )
+        elif mode == Stretch4IKModes.BASE_ROTATE:
+            return cls(
+                base_x=0.0,
+                base_y=0.0,
+                base_theta=q[0],
+                lift=q[1],
+                arm=q[2],
+                wrist_yaw=q[3],
+                wrist_pitch=q[4],
+                wrist_roll=q[5]
+            )
+        elif mode == Stretch4IKModes.BASE_FIXED:
+            return cls(
+                base_x=0.0,
+                base_y=0.0,
+                base_theta=0.0,
+                lift=q[0],
+                arm=q[1],
+                wrist_yaw=q[2],
+                wrist_pitch=q[3],
+                wrist_roll=q[4]
+            )
+        else:
+            raise ValueError(f"Unsupported IK mode: {mode}")
 
     def to_numpy(self) -> np.ndarray:
         """
@@ -369,8 +452,19 @@ class StretchKinematics:
         Args:
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
         """
-        self.model = _load_stretch4_urdf(use_calibrated_urdf)
+        # use a full DOF model for control and forward kinematics
+        self.model = _load_stretch4_urdf(
+            ik_mode=Stretch4IKModes.BASE_PLANAR,
+            calibrated=use_calibrated_urdf
+        )
         self.data = self.model.createData()
+
+        # use the 6-dof model for inverse kinematics (no translation on base)
+        self.model_ik = _load_stretch4_urdf(
+            ik_mode=Stretch4IKModes.BASE_ROTATE,
+            calibrated=use_calibrated_urdf
+        )
+        self.data_ik = self.model_ik.createData()
 
         # Define translation and rotation joints
         self.translation_joints = [
@@ -411,15 +505,17 @@ class StretchKinematics:
         frame_id = self.model.getFrameId(target_frame)
         return self.data.oMf[frame_id]
 
-    def inverse(
+    def _closed_loop_inverse_kinematics(
         self,
+        model: pin.Model,
+        data: pin.Data,
         target_frame: str,
         target_pose: pin.SE3,
         q_guess: np.ndarray = None,
         max_iter: int = 200,
         eps: float = 1e-4,
         damp: float = 1e-6
-    ) -> StretchJointPositions:
+    ) -> np.ndarray:
         """
         Computes the numerical inverse kinematics using the standard Closed-Loop 
         Inverse Kinematics (CLIK) algorithm with Levenberg-Marquardt damping.
@@ -434,39 +530,89 @@ class StretchKinematics:
             max_iter (int): Maximum number of iterations.
             eps (float): Convergence tolerance.
             damp (float): Damping factor for pseudo-inverse.
-        
+
         Returns:
-            StretchJointPositions: The joint configuration solving the IK.
+            np.ndarray: The joint configuration solving the IK.
         """
-        q = pin.neutral(self.model) if q_guess is None else q_guess.copy()
-        frame_id = self.model.getFrameId(target_frame)
+        frame_id = model.getFrameId(target_frame)
         
+        # Initialize q_guess
+        if q_guess is not None:
+            q = q_guess.copy()
+        else:
+            q = pin.neutral(model)
+        
+        # CLIK algorithm
         for i in range(max_iter):
-            # compute current fk solution
-            pin.forwardKinematics(self.model, self.data, q)
-            pin.updateFramePlacements(self.model, self.data)
+            pin.forwardKinematics(model, data, q)
+            pin.updateFramePlacements(model, data)
             
-            # compute error between target and current pose
-            dMi = target_pose.actInv(self.data.oMf[frame_id])
+            dMi = target_pose.actInv(data.oMf[frame_id])
             err = pin.log(dMi).vector
             
-            # stop if error is small
             if np.linalg.norm(err) < eps:
                 break
             
-            # compute Jacobian
-            J = pin.computeFrameJacobian(self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL)
+            J = pin.computeFrameJacobian(model, data, q, frame_id, pin.ReferenceFrame.LOCAL)
             
-            # compute velocity correction using Levenberg-Marquardt damping
-            # This conditions the Jacobian to prevent singularities
             J_JT = J @ J.T + damp * np.eye(6)
             dq = -J.T @ np.linalg.solve(J_JT, err)
             
-            # update joint configuration
-            q = pin.integrate(self.model, q, dq)
+            q = pin.integrate(model, q, dq)
 
-        joint_state = StretchJointPositions.from_pinocchio_q(q)
-        return joint_state
+        return q
+
+    def inverse_6dof(
+        self,
+        target_frame: str,
+        target_pose: pin.SE3,
+        q_guess: np.ndarray = None,
+        max_iter: int = 200,
+        eps: float = 1e-4,
+        damp: float = 1e-6
+    ) -> StretchJointPositions:
+        """
+        Uses the 6-dof URDF model with only a rotating base (no translation) to solve IK.
+
+        Args:
+            target_frame (str): The name of the frame to compute the inverse kinematics for.
+            target_pose (pin.SE3): The desired pose of the target frame in the world frame.
+            q_guess (np.ndarray, optional): Initial joint configuration guess. Defaults to neutral configuration.
+            max_iter (int): Maximum number of iterations.
+            eps (float): Convergence tolerance.
+            damp (float): Damping factor for pseudo-inverse.
+
+        Returns:
+            StretchJointPositions: The joint configuration solving the IK.
+        """
+        # Parse q_guess into the 6-dof format for the solver
+        if q_guess is not None:
+            if isinstance(q_guess, StretchJointPositions):
+                q = q_guess.to_pinocchio_q(Stretch4IKModes.BASE_ROTATE)
+            elif len(q_guess) == 8:
+                q = np.array([q_guess[2], q_guess[3], q_guess[4], q_guess[5], q_guess[6], q_guess[7]])
+            elif len(q_guess) != self.model_ik.nq:
+                positions = StretchJointPositions.from_pinocchio_q(q_guess)
+                q = positions.to_pinocchio_q(Stretch4IKModes.BASE_ROTATE)
+            else:
+                q = q_guess.copy()
+        else:
+            q = pin.neutral(self.model_ik)
+        
+        # Solve IK
+        q_6dof = self._closed_loop_inverse_kinematics(
+            model=self.model_ik,
+            data=self.data_ik,
+            target_frame=target_frame,
+            target_pose=target_pose,
+            q_guess=q,
+            max_iter=max_iter,
+            eps=eps,
+            damp=damp
+        )
+        
+        # Map 6-dof solved state back to the 8-joint StretchJointPositions
+        return StretchJointPositions.from_pinocchio_q(q_6dof)
 
     def differential_ik(
         self,
