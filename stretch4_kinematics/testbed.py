@@ -104,9 +104,9 @@ def test_kinematics_library():
     # 2. Inverse Kinematics Example
     try:
         target_pose = pin.SE3.Identity()
-        target_pose.translation = np.array([0.5, 0.5, 0.5])
+        target_pose.translation = np.array([0.3, 0.1, 0.5])
         target_pose.rotation = np.eye(3)
-        q_sol = k1.inverse(target_frame, target_pose)
+        q_sol = k1.inverse_6dof(target_frame, target_pose)
         print(f"  Inverse Kinematics to {target_frame} at pose {target_pose} (SE3):")
         q_sol.print()
     except NotImplementedError:

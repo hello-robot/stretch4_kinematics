@@ -90,7 +90,7 @@ class StretchInterface:
         self.cmd_zero_velocity()
         self.robot.stop()
 
-    def get_joint_position(self) -> StretchJointPositions:
+    def get_joint_position(self, report_zero_odom: bool=False) -> StretchJointPositions:
         """
         Queries the current robot status and constructs a StretchJointPositions object,
         pulling the base x, y, theta coordinates from odometry relative to the reset origin.
@@ -99,7 +99,12 @@ class StretchInterface:
         status = self.robot.status
 
         # Read base odometry (supporting 'omnibase' or legacy 'base' keys)
-        base_x, base_y, base_theta = self.get_base_odometry(status)
+        if report_zero_odom:
+            base_x = 0.0
+            base_y = 0.0
+            base_theta = 0.0
+        else:
+            base_x, base_y, base_theta = self.get_base_odometry(status)
 
         # Read arm & lift
         lift_pos = status.get('lift', {}).get('pos', 0.5)
@@ -156,6 +161,84 @@ class StretchInterface:
             wrist_pitch=wrist_pitch_vel,
             wrist_roll=wrist_roll_vel
         )
+
+    def move_to_pose(self, pose: StretchJointPositions) -> None:
+        """
+        Commands positions to all joints of the robot (base, lift, arm, and wrist joints).
+        Only commands homed joints and raises an exception if base translation and rotation
+        are both requested.
+        
+        Args:
+            pose (StretchJointPositions): The commanded joint positions.
+        """
+        # Calculate delta in joint positions from current to target
+        current = self.get_joint_position()
+        dx = pose.base_x - current.base_x
+        dy = pose.base_y - current.base_y
+        dtheta = (pose.base_theta - current.base_theta + np.pi) % (2 * np.pi) - np.pi
+
+        # Check if going to translate or rotate; break if both
+        eps = 1e-3
+        going_to_translate = (abs(dx) > eps or abs(dy) > eps)
+        going_to_rotate = (abs(dtheta) > eps)
+
+        if going_to_translate and going_to_rotate:
+            raise ValueError(
+                f"Base cannot translate and rotate simultaneously (requested translation: "
+                f"dx={dx:.4f}, dy={dy:.4f}; requested rotation: dtheta={dtheta:.4f})"
+            )
+
+        # Lift Command (Requires Homing)
+        if hasattr(self.robot, "lift"):
+            try:
+                if self.robot.lift.is_homed():
+                    self.robot.lift.move_to(pose.lift)
+                else:
+                    self.robot.logger.warning("Lift joint is not homed; move command ignored.")
+            except Exception as e:
+                self.robot.logger.error(f"Failed to move lift: {e}")
+
+        # Arm Command (Requires Homing)
+        if hasattr(self.robot, "arm"):
+            try:
+                if self.robot.arm.is_homed():
+                    self.robot.arm.move_to(pose.arm)
+                else:
+                    self.robot.logger.warning("Arm joint is not homed; move command ignored.")
+            except Exception as e:
+                self.robot.logger.error(f"Failed to move arm: {e}")
+
+        # End of Arm Commands (Requires Homing per joint)
+        if hasattr(self.robot, "end_of_arm"):
+            for joint_name, target_val in [
+                ("wrist_yaw", pose.wrist_yaw),
+                ("wrist_pitch", pose.wrist_pitch),
+                ("wrist_roll", pose.wrist_roll)
+            ]:
+                try:
+                    if joint_name in self.robot.end_of_arm.joints:
+                        if self.robot.end_of_arm.is_homed(joint_name):
+                            self.robot.end_of_arm.move_to(joint_name, target_val)
+                        else:
+                            self.robot.logger.warning(f"Wrist joint {joint_name} is not homed; move command ignored.")
+                except Exception as e:
+                    self.robot.logger.error(f"Failed to move {joint_name}: {e}")
+
+        # Base Command
+        if hasattr(self.robot, "base"):
+            try:
+                if going_to_translate:
+                    self.robot.base.translate_by(dx, dy)
+                elif going_to_rotate:
+                    self.robot.base.rotate_by(dtheta)
+            except Exception as e:
+                self.robot.logger.error(f"Failed to move base: {e}")
+
+        # Push all queued commands to the hardware/server simultaneously
+        try:
+            self.robot.push_command()
+        except Exception as e:
+            self.robot.logger.error(f"Failed to push move commands to the robot: {e}")
 
     def cmd_velocities(self, v: StretchJointVelocities) -> None:
         """
