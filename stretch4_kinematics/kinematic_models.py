@@ -568,7 +568,10 @@ class StretchKinematics:
     def inverse_6dof(
         self,
         target_frame: str,
-        target_pose: pin.SE3,
+        target_pose: pin.SE3 = None,
+        target_xyz: np.ndarray = None,
+        target_quat: np.ndarray = None,
+        target_rpy: np.ndarray = None,
         q_guess: np.ndarray = None,
         max_iter: int = 200,
         eps: float = 1e-4,
@@ -576,18 +579,47 @@ class StretchKinematics:
     ) -> StretchJointPositions:
         """
         Uses the 6-dof URDF model with only a rotating base (no translation) to solve IK.
+        Provide either a target_pose, or a target_xyz and target_quat/target_rpy.
+        If target_pose is provided, the other arguments will be ignored.
 
         Args:
             target_frame (str): The name of the frame to compute the inverse kinematics for.
-            target_pose (pin.SE3): The desired pose of the target frame in the world frame.
+            target_pose (pin.SE3, optional): The desired pose of the target frame in the world frame.
+            target_xyz (np.ndarray, optional): The desired position of the target frame in the world frame.
+            target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
+            target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
             q_guess (np.ndarray, optional): Initial joint configuration guess. Defaults to neutral configuration.
-            max_iter (int): Maximum number of iterations.
-            eps (float): Convergence tolerance.
-            damp (float): Damping factor for pseudo-inverse.
+            max_iter (int, optional): Maximum number of iterations.
+            eps (float, optional): Convergence tolerance.
+            damp (float, optional): Damping factor for pseudo-inverse.
 
         Returns:
             StretchJointPositions: The joint configuration solving the IK.
         """
+        # Parse coordinates into a pin.SE3 object
+        if target_pose is None:
+            if target_xyz is None:
+                raise ValueError("Must specify either 'target_pose' or 'target_xyz' position.")
+            
+            # Position
+            translation = np.array(target_xyz, dtype=float)
+            
+            # Orientation
+            if target_quat is not None:
+                # Normalize quaternion to prevent numerical issues
+                q_xyzw = np.array(target_quat, dtype=float)
+                q_xyzw /= np.linalg.norm(q_xyzw)
+                # Pinocchio Quaternion constructor signature: Quaternion(w, x, y, z)
+                rotation = pin.Quaternion(q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]).matrix()
+            elif target_rpy is not None:
+                # Convert RPY (Roll-Pitch-Yaw) in radians to a rotation matrix
+                rotation = pin.rpy.rpyToMatrix(np.array(target_rpy, dtype=float))
+            else:
+                # Default to identity rotation if none specified
+                rotation = np.eye(3)
+                
+            target_pose = pin.SE3(rotation, translation)
+
         # Parse q_guess into the 6-dof format for the solver
         if q_guess is not None:
             if isinstance(q_guess, StretchJointPositions):

@@ -90,7 +90,7 @@ class StretchInterface:
         self.cmd_zero_velocity()
         self.robot.stop()
 
-    def get_joint_position(self) -> StretchJointPositions:
+    def get_joint_position(self, report_zero_odom: bool=False) -> StretchJointPositions:
         """
         Queries the current robot status and constructs a StretchJointPositions object,
         pulling the base x, y, theta coordinates from odometry relative to the reset origin.
@@ -99,7 +99,12 @@ class StretchInterface:
         status = self.robot.status
 
         # Read base odometry (supporting 'omnibase' or legacy 'base' keys)
-        base_x, base_y, base_theta = self.get_base_odometry(status)
+        if report_zero_odom:
+            base_x = 0.0
+            base_y = 0.0
+            base_theta = 0.0
+        else:
+            base_x, base_y, base_theta = self.get_base_odometry(status)
 
         # Read arm & lift
         lift_pos = status.get('lift', {}).get('pos', 0.5)
