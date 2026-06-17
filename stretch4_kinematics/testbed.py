@@ -108,7 +108,7 @@ def test_kinematics_library():
         target_pose.rotation = np.eye(3)
         q_sol = k1.inverse_6dof(target_frame, target_pose)
         print(f"  Inverse Kinematics to {target_frame} at pose {target_pose} (SE3):")
-        q_sol.print()
+        q_sol.pretty_print()
     except NotImplementedError:
         print("  [IK] inverse() is defined but not yet implemented.")
 
@@ -118,7 +118,7 @@ def test_kinematics_library():
         v_desired = np.array([0.1, 0.05, -0.1, 0.0, 0.0, 0.0])
         dq = k1.differential_ik(joint_position, target_frame, v_desired)
         print("  Differential IK:")
-        dq.print()
+        dq.pretty_print()
     except NotImplementedError:
         print("  [Diff IK] differential_ik() is defined but not yet implemented.")
 

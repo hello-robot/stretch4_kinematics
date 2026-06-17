@@ -10,9 +10,14 @@ class StretchInterface:
     Interface wrapper around RobotClient to convert raw hardware status
     dictionaries into kinematic representations (StretchJointPositions and StretchJointVelocities).
     """
-    def __init__(self):
-        self.robot = RobotClient()
-        self.robot.startup()
+    def __init__(self, robot: RobotClient):
+        """
+        Initializes a new StretchInterface.
+
+        Args:
+            robot (RobotClient): The robot client to wrap.
+        """
+        self.robot = robot
 
         # Odometry offset variables
         self._x_offset = 0.0
@@ -70,25 +75,6 @@ class StretchInterface:
         base_y = dx * sin_t + dy * cos_t
 
         return base_x, base_y, base_theta
-
-    def startup(self) -> bool:
-        """
-        Starts up the robot client connection if not already connected.
-        """
-        if getattr(self.robot, "server_connected", False) or getattr(self.robot, "is_valid", False):
-            self.robot.pull_status()
-            return True
-        success = self.robot.startup()
-        if success:
-            self.robot.pull_status()
-        return success
-
-    def shutdown(self):
-        """
-        Safely stops the robot client connection.
-        """
-        self.cmd_zero_velocity()
-        self.robot.stop()
 
     def get_joint_position(self, report_zero_odom: bool=False) -> StretchJointPositions:
         """

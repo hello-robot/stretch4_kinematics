@@ -8,7 +8,9 @@ from stretch4_kinematics.kinematic_models import StretchKinematics
 
 def main():
     # Initialize the robot interface and kinematics solver
-    interface = StretchInterface()
+    robot = RobotClient()
+    robot.startup()
+    interface = StretchInterface(robot=robot)
     solver = StretchKinematics()
 
     # Query the current joint positions to use as the initial guess

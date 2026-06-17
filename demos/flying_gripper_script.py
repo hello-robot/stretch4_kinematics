@@ -3,6 +3,8 @@ import numpy as np
 import pinocchio as pin
 import time
 
+from stretch4_body.robot.robot_client import RobotClient
+
 from stretch4_kinematics.stretch_interface import StretchInterface
 
 from stretch4_kinematics.kinematic_models import (
@@ -16,7 +18,9 @@ from stretch4_kinematics.controllers import (
 
 class FlyingGripperScript:
     def __init__(self):
-        self.robot_interface = StretchInterface()
+        self.robot = RobotClient()
+        self.robot.startup()
+        self.robot_interface = StretchInterface(robot=self.robot)
         self.controller = FlyingGripperController()
     
     def test_numerical_run(self, target_pose: pin.SE3):
@@ -118,7 +122,7 @@ class FlyingGripperScript:
             except KeyboardInterrupt:
                 break
 
-        self.robot_interface.shutdown()
+        self.robot.shutdown()
 
 if __name__ == '__main__':
     import argparse
