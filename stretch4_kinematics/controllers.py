@@ -27,6 +27,10 @@ class StretchVelocityController:
     Provides utilities for enforcing joint velocity and position limits.
     """
     def __init__(self):
+        """
+        Initializes the StretchVelocityController base class, defining maximum 
+        joint velocities for safety clamping.
+        """
         # joint velocity limits
         self._v_max = StretchJointVelocities(
             base_x=0.15,
@@ -99,16 +103,43 @@ class StretchVelocityController:
         return v_limited
 
     def _enforce_joint_position_limits(self, q_desired: StretchJointPositions) -> StretchJointPositions:
+        """
+        Enforces joint position limits on the desired joint positions.
+        Currently a placeholder that returns the input positions unchanged.
+
+        Args:
+             q_desired (StretchJointPositions): The desired joint positions.
+
+        Returns:
+             StretchJointPositions: The joint positions after enforcing limits.
+        """
         q_limited = copy.deepcopy(q_desired)
         # TODO: Implement limits
         return q_limited
 
-    def update(self, dt: float, current_pos: StretchJointPositions, current_vel: StretchJointVelocities):
+    def update(
+        self,
+        dt: float,
+        current_pos: StretchJointPositions,
+        current_vel: StretchJointVelocities
+    ):
+        """
+        Abstract method to update the controller. Must be implemented by subclasses.
+
+        Args:
+            dt (float): Time step since last update.
+            current_pos (StretchJointPositions): Current joint positions.
+            current_vel (StretchJointVelocities): Current joint velocities.
+        """
         raise NotImplementedError()
 
 
 class FlyingGripperController(StretchVelocityController):
     def __init__(self):
+        """
+        Initializes the FlyingGripperController, setting up the PID gains,
+        integration states, deadband thresholds, and the internal kinematics solver.
+        """
         super().__init__()
         self._kinematics_solver = ToolFrameKinematics()
         self._state = FlyingGripperState.IDLE

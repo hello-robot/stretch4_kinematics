@@ -648,6 +648,8 @@ class StretchKinematics:
 
         solution_pose = self.forward(StretchJointPositions.from_pinocchio_q(q_6dof), target_frame)
         error = np.linalg.norm(pin.log(solution_pose.actInv(target_pose)).vector)
+        
+        # Check if solution converged and retry using pin.neutral as initial guess
         if error > eps:
             print(f"Warning: IK solution error is {error} with initial guess {q_guess}.")
             print(f"Retrying with neutral pose initial guess.")

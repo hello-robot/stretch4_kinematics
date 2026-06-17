@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import numpy as np
-import pinocchio as pin
 import time
 
 from stretch4_kinematics.kinematic_models import StretchKinematics, StretchJointPositions
