@@ -190,7 +190,10 @@ class FlyingGripperController(StretchVelocityController):
         current_pose = self._kinematics_solver.forward(current_pos, target_frame)
         relative_transform = current_pose.actInv(target_pose)
         
-        error = pin.log(relative_transform).vector
+        # Decouple translation error from orientation warping
+        error = np.zeros(6)
+        error[:3] = relative_transform.translation
+        error[3:] = pin.log(relative_transform).vector[3:]
         
         if self._first_step:
             d_error = np.zeros(6)
