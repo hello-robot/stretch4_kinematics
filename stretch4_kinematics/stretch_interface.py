@@ -173,7 +173,7 @@ class StretchInterface:
         dtheta = (pose.base_theta - current.base_theta + np.pi) % (2 * np.pi) - np.pi
 
         # Check if going to translate or rotate; break if both
-        eps = 1e-4
+        eps = 1e-3
         going_to_translate = (abs(dx) > eps or abs(dy) > eps)
         going_to_rotate = (abs(dtheta) > eps)
 

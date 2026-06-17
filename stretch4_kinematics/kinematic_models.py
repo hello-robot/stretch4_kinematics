@@ -53,11 +53,18 @@ def _load_stretch4_urdf(
     robot_urdf = ud.URDF.load(io.BytesIO(urdf_string.encode('utf-8')))
 
     # Apply IK modifications: clip joint limits, rigidify non-IK joints, and merge arm
+    # TODO don't use this internal func
     robot_urdf = _make_ik_urdf(robot_urdf, is_merge_arm=True)
 
     # Add virtual joint to the base in-place
     if ik_mode == Stretch4IKModes.BASE_ROTATE:
         add_virtual_rotary_joint(robot_urdf)
+
+        joint = robot_urdf.joint_map.get("mobile_base_rotation_joint")
+        if joint is not None and joint.limit is not None:
+            joint.limit.lower = -1.0 * np.pi
+            joint.limit.upper = 1.0 * np.pi
+    
     elif ik_mode == Stretch4IKModes.BASE_PLANAR:
         add_virtual_planar_joint(robot_urdf)
 
@@ -349,12 +356,6 @@ class StretchJointPositions:
         for field in fields(self):
             print(f"{field.name}: {getattr(self, field.name):.4f}")
 
-    def print(self) -> None:
-        """
-        Pretty-prints each joint name and value on sequential lines.
-        """
-        self.pretty_print()
-
 
 @dataclass
 class StretchJointVelocities:
@@ -436,12 +437,6 @@ class StretchJointVelocities:
         """
         for field in fields(self):
             print(f"{field.name}_dot: {getattr(self, field.name):.4f}")
-
-    def print(self) -> None:
-        """
-        Pretty-prints each joint name and velocity value on sequential lines.
-        """
-        self.pretty_print()
 
 
 class StretchKinematics:
@@ -541,6 +536,10 @@ class StretchKinematics:
             q = q_guess.copy()
         else:
             q = pin.neutral(model)
+
+        # Clip to joint limits
+        if model.nq == model.nv:
+            q = np.clip(q, model.lowerPositionLimit, model.upperPositionLimit)
         
         # CLIK algorithm
         for i in range(max_iter):
@@ -559,6 +558,10 @@ class StretchKinematics:
             dq = -J.T @ np.linalg.solve(J_JT, err)
             
             q = pin.integrate(model, q, dq)
+            
+            # Clip to joint limits
+            if model.nq == model.nv:
+                q = np.clip(q, model.lowerPositionLimit, model.upperPositionLimit)
 
         return q
 
