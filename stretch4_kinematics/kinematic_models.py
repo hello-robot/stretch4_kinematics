@@ -634,7 +634,7 @@ class StretchKinematics:
         else:
             q = pin.neutral(self.model_ik)
         
-        # Solve IK
+        # Solve IK using initial guess q
         q_6dof = self._closed_loop_inverse_kinematics(
             model=self.model_ik,
             data=self.data_ik,
@@ -645,6 +645,30 @@ class StretchKinematics:
             eps=eps,
             damp=damp
         )
+
+        solution_pose = self.forward(StretchJointPositions.from_pinocchio_q(q_6dof), target_frame)
+        error = np.linalg.norm(pin.log(solution_pose.actInv(target_pose)).vector)
+        if error > eps:
+            print(f"Warning: IK solution error is {error} with initial guess {q_guess}.")
+            print(f"Retrying with neutral pose initial guess.")
+
+            q_6dof = self._closed_loop_inverse_kinematics(
+                model=self.model_ik,
+                data=self.data_ik,
+                target_frame=target_frame,
+                target_pose=target_pose,
+                q_guess=pin.neutral(self.model_ik),
+                max_iter=max_iter,
+                eps=eps,
+                damp=damp
+            )
+            solution_pose = self.forward(StretchJointPositions.from_pinocchio_q(q_6dof), target_frame)
+            error = np.linalg.norm(pin.log(solution_pose.actInv(target_pose)).vector)
+            if error > eps:
+                print(f"Warning: IK solution error is {error} with neutral initial guess.")
+                raise ValueError("IK solution error is too large. Try a different initial guess or target pose.")
+            else:
+                print(f"Neutral pose initial guess worked!")
         
         # Map 6-dof solved state back to the 8-joint StretchJointPositions
         return StretchJointPositions.from_pinocchio_q(q_6dof)
