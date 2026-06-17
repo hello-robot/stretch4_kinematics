@@ -5,9 +5,11 @@ import yourdfpy
 
 from stretch4_urdf import get_urdf, get_urdf_calibrated
 
-from stretch4_kinematics.kinematic_models import (
+from stretch4_kinematics.state import (
     StretchJointPositions,
     StretchJointVelocities,
+)
+from stretch4_kinematics.kinematic_models import (
     ToolFrameKinematics,
     PlanarToolFrameKinematics,
     CylindricalToolFrameKinematics,

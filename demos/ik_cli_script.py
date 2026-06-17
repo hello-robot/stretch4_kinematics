@@ -4,7 +4,8 @@ import time
 
 from stretch4_body.robot.robot_client import RobotClient
 
-from stretch4_kinematics.kinematic_models import StretchKinematics, StretchJointPositions
+from stretch4_kinematics.kinematic_models import StretchKinematics
+from stretch4_kinematics.state import StretchJointPositions
 from stretch4_kinematics.stretch_interface import StretchInterface
 
 def prompt_float(name: str) -> float:
@@ -29,7 +30,7 @@ def main():
     interface = None
     try:
         robot = RobotClient()
-        robot.start()
+        robot.startup()
         interface = StretchInterface(robot=robot)
         interface.reset_odometry_offset()
         current_joint_state = interface.get_joint_position()
@@ -70,7 +71,7 @@ def main():
         interface.reset_odometry_offset()
         interface.move_to_pose(ik_solution)
         time.sleep(3.)
-        robot.shutdown()
+        robot.stop()
     else:
         print("\nMove cancelled.")
 

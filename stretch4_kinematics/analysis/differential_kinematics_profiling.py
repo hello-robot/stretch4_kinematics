@@ -2,10 +2,8 @@ import copy
 import matplotlib.pyplot as plt
 import numpy as np
 
-from stretch4_kinematics.kinematic_models import (
-    StretchJointPositions,
-    ToolFrameKinematics,
-)
+from stretch4_kinematics.state import StretchJointPositions
+from stretch4_kinematics.kinematic_models import ToolFrameKinematics
 
 def test_toolframe_kinematics(q_init: StretchJointPositions, file_prefix: str=""):    
     kinematics = ToolFrameKinematics()

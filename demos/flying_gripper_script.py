@@ -7,7 +7,7 @@ from stretch4_body.robot.robot_client import RobotClient
 
 from stretch4_kinematics.stretch_interface import StretchInterface
 
-from stretch4_kinematics.kinematic_models import (
+from stretch4_kinematics.state import (
     StretchJointPositions,
     StretchJointVelocities,
 )
@@ -122,7 +122,7 @@ class FlyingGripperScript:
             except KeyboardInterrupt:
                 break
 
-        self.robot.shutdown()
+        self.robot.stop()
 
 if __name__ == '__main__':
     import argparse

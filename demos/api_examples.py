@@ -31,13 +31,14 @@ def main():
     # Command all joints to move to the solved pose simultaneously
     ui = input("Enter y to move the robot to the solved pose.\nInput: ")
     if ui == "y":
+        print("Moving!")
         interface.move_to_pose(solved_pose)
         time.sleep(3.)
     else:
         print("Move cancelled.")
     
     # Clean up connections
-    interface.shutdown()
+    robot.stop()
 
 if __name__ == '__main__':
     main()
