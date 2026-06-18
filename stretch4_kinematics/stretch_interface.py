@@ -226,6 +226,81 @@ class StretchInterface:
         except Exception as e:
             self.robot.logger.error(f"Failed to push move commands to the robot: {e}")
 
+    def move_to_local_pose(self, pose: StretchJointPositions) -> None:
+        """
+        Commands positions to all manipulator joints, and treats the base coordinates
+        (base_x, base_y, base_theta) as relative displacements in the local robot frame.
+        
+        Like move_to_pose, this method enforces safety constraints by preventing 
+        simultaneous base translation and rotation.
+
+        Args:
+            pose (StretchJointPositions): The joint positions to command, where base 
+                                          coordinates are treated as relative displacements.
+        """
+        # Check if going to translate or rotate; break if both
+        eps = 1e-3
+        going_to_translate = (abs(pose.base_x) > eps or abs(pose.base_y) > eps)
+        going_to_rotate = (abs(pose.base_theta) > eps)
+
+        if going_to_translate and going_to_rotate:
+            raise ValueError(
+                f"Base cannot translate and rotate simultaneously (requested local translation: "
+                f"dx={pose.base_x:.4f}, dy={pose.base_y:.4f}; requested local rotation: dtheta={pose.base_theta:.4f})"
+            )
+
+        # Lift Command (Requires Homing)
+        if hasattr(self.robot, "lift"):
+            try:
+                if self.robot.lift.is_homed():
+                    self.robot.lift.move_to(pose.lift)
+                else:
+                    self.robot.logger.warning("Lift joint is not homed; move command ignored.")
+            except Exception as e:
+                self.robot.logger.error(f"Failed to move lift: {e}")
+
+        # Arm Command (Requires Homing)
+        if hasattr(self.robot, "arm"):
+            try:
+                if self.robot.arm.is_homed():
+                    self.robot.arm.move_to(pose.arm)
+                else:
+                    self.robot.logger.warning("Arm joint is not homed; move command ignored.")
+            except Exception as e:
+                self.robot.logger.error(f"Failed to move arm: {e}")
+
+        # End of Arm Commands (Requires Homing per joint)
+        if hasattr(self.robot, "end_of_arm"):
+            for joint_name, target_val in [
+                ("wrist_yaw", pose.wrist_yaw),
+                ("wrist_pitch", pose.wrist_pitch),
+                ("wrist_roll", pose.wrist_roll)
+            ]:
+                try:
+                    if joint_name in self.robot.end_of_arm.joints:
+                        if self.robot.end_of_arm.is_homed(joint_name):
+                            self.robot.end_of_arm.move_to(joint_name, target_val)
+                        else:
+                            self.robot.logger.warning(f"Wrist joint {joint_name} is not homed; move command ignored.")
+                except Exception as e:
+                    self.robot.logger.error(f"Failed to move {joint_name}: {e}")
+
+        # Base Command
+        if hasattr(self.robot, "base"):
+            try:
+                if going_to_translate:
+                    self.robot.base.translate_by(pose.base_x, pose.base_y)
+                elif going_to_rotate:
+                    self.robot.base.rotate_by(pose.base_theta)
+            except Exception as e:
+                self.robot.logger.error(f"Failed to move base: {e}")
+
+        # Push all queued commands to the hardware/server simultaneously
+        try:
+            self.robot.push_command()
+        except Exception as e:
+            self.robot.logger.error(f"Failed to push move commands to the robot: {e}")
+
     def cmd_velocities(self, v: StretchJointVelocities) -> None:
         """
         Commands velocities to all joints of the robot (base, lift, arm, and wrist joints).

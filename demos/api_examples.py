@@ -18,7 +18,7 @@ def main():
     current_state = interface.get_joint_position(report_zero_odom=True)
 
     # Solve 6-DOF Inverse Kinematics (base rotation allowed, no base translation)
-    solved_pose = solver.inverse_6dof(
+    solved_pose = solver.inverse_6dof_local(
         target_frame="tool_attachment_site_link",
         target_xyz=np.array([0.4, -0.2, 0.8]),
         target_rpy=np.deg2rad([30, 30, 0]),
@@ -32,7 +32,7 @@ def main():
     ui = input("Enter y to move the robot to the solved pose.\nInput: ")
     if ui == "y":
         print("Moving!")
-        interface.move_to_pose(solved_pose)
+        interface.move_to_local_pose(solved_pose)
         time.sleep(3.)
     else:
         print("Move cancelled.")

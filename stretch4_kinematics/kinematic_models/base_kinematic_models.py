@@ -132,7 +132,7 @@ class StretchKinematics:
 
         return q
 
-    def inverse_6dof(
+    def inverse_6dof_local(
         self,
         target_frame: str,
         target_pose: pin.SE3 = None,
@@ -145,6 +145,7 @@ class StretchKinematics:
         damp: float = 1e-6
     ) -> StretchJointPositions:
         """
+        Solves IK relative the robot's current (local) base position: [X,Y,A] = [0,0,0]
         Uses the 6-dof URDF model with only a rotating base (no translation) to solve IK.
         Provide either a target_pose, or a target_xyz and target_quat/target_rpy.
         If target_pose is provided, the other arguments will be ignored.
@@ -156,12 +157,13 @@ class StretchKinematics:
             target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
             target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
             q_guess (np.ndarray, optional): Initial joint configuration guess. Defaults to neutral configuration.
+                NOTE: q_guess ignores the base [X,Y,A] state
             max_iter (int, optional): Maximum number of iterations.
             eps (float, optional): Convergence tolerance.
             damp (float, optional): Damping factor for pseudo-inverse.
 
         Returns:
-            StretchJointPositions: The joint configuration solving the IK.
+            StretchJointPositions: The joint configuration solving the IK in a local base frame.
         """
         # Parse coordinates into a pin.SE3 object
         if target_pose is None:
@@ -200,6 +202,9 @@ class StretchKinematics:
                 q = q_guess.copy()
         else:
             q = pin.neutral(self.model_ik)
+
+        # Ensure the solver starts at local base rotation A = 0
+        q[0] = 0.0
         
         # Solve IK using initial guess q
         q_6dof = self._closed_loop_inverse_kinematics(

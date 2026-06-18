@@ -54,7 +54,7 @@ def main():
     q_guess = current_joint_state.to_pinocchio_q()
     
     print(f"\nSolving IK for target pose relative to base...")
-    ik_solution = solver.inverse_6dof(
+    ik_solution = solver.inverse_6dof_local(
         target_frame=target_frame,
         target_xyz=np.array([x, y, z]),
         target_rpy=np.array([r, p, yaw]),
@@ -69,7 +69,7 @@ def main():
     confirm = input("\nEnter y to confirm move to joint state: ").strip().lower()
     if confirm == 'y' and interface is not None and robot is not None:
         interface.reset_odometry_offset()
-        interface.move_to_pose(ik_solution)
+        interface.move_to_local_pose(ik_solution)
         time.sleep(3.)
         robot.stop()
     else:
