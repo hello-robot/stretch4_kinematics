@@ -22,10 +22,6 @@ from stretch4_kinematics.stretch_interface import StretchInterface
 from gamepad_mapper import GamepadMapper
 
 
-# Lookahead gain for wrist movements to compensate for communication and motor lag
-WRIST_JOG_LOOKAHEAD_GAIN = 2.0
-
-
 class TeleopMode(Enum):
     """
     Control modes for teleoperation.
@@ -272,11 +268,6 @@ class FlyingGripperTeleop:
         v_joint.wrist_yaw += cmd.rot_change[0] * w_scale
         v_joint.wrist_pitch = cmd.rot_change[1] * w_scale * pitch_sign_mult
         v_joint.wrist_roll = cmd.rot_change[2] * w_scale
-
-        # Apply lookahead gain to wrist joints to reduce control lag
-        v_joint.wrist_yaw *= WRIST_JOG_LOOKAHEAD_GAIN
-        v_joint.wrist_pitch *= WRIST_JOG_LOOKAHEAD_GAIN
-        v_joint.wrist_roll *= WRIST_JOG_LOOKAHEAD_GAIN
 
         return v_joint
 

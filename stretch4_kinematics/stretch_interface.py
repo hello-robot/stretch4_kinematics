@@ -34,6 +34,9 @@ class StretchInterface:
         self.max_wrist_roll_vel = np.deg2rad(60.0)
         self._last_cmd_time = None
 
+        # Wrist lookahead gain
+        self.wrist_lookahead_gain = 10.0
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.shutdown()
 
@@ -398,7 +401,7 @@ class StretchInterface:
                             # val is velocity (rad/s), move_by expects position displacement (rad)
                             self.robot.end_of_arm.move_by(
                                 joint_name,
-                                val * dt,
+                                val * dt * self.wrist_lookahead_gain,
                                 val
                                 )  # TODO: replace with vel control later
                         else:
