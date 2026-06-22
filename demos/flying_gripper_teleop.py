@@ -304,15 +304,17 @@ class FlyingGripperTeleop:
         """
         Starts the teleoperation loop.
         """
+        # loop config
         control_mode = TeleopMode.GRIPPER_FRAME
         hz = 50.0
         dt = 1.0 / hz
         rate = time.time()
-        last_pushed_was_zero = False
+        last_pushed_was_zero = False  # debounce
 
+        # set up kinematic commands
         gripper_close_pct = -60.0
         gripper_open_pct = 60.0
-        pitch_sign_mult = -1.0
+        pitch_sign_mult = -1.0  # flip with respect to joystick
 
         print("====================================")
         print("Gripper-Centric Teleop Started")
@@ -343,6 +345,7 @@ class FlyingGripperTeleop:
                 # Parse raw commands into flags for controller behavior
                 cmd = parse_gamepad_command(raw_cmd)
 
+                # toggle control mode
                 if cmd.toggle_mode:
                     if control_mode == TeleopMode.GRIPPER_FRAME:
                         control_mode = TeleopMode.JOINT_SPACE
