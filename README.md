@@ -42,7 +42,7 @@ An application utilizing this library operates under one of two paradigms:
 #### Paradigm A: Stateless Solver
 The app directly instantiates a stateless **Kinematic Model** (e.g., `StretchKinematics` or `ToolFrameKinematics`) to compute FK/IK on the fly. The app queries the current joint state, solves the position `q` for a target pose or velocity `q_dot` for a target velocity, and commands the robot interface to move to the solved `q` or `q_dot`.
 
-Here is the data routing and control flow for Option B:
+Here is the data routing and control flow for Option A:
 
 ```mermaid
 graph TD
@@ -63,10 +63,10 @@ graph TD
     IF -->|q or q_dot| RC
 ```
 
-#### Paradigm B: Stateful Controller
-The app instantiates a stateful **Controller** (e.g., `FlyingGripperTrackingController`) which internally handles stateful tracking (e.g., PID states, accumulated error). A controller may instantiate its own stateless **Kinematic Model** to evaluate differential kinematics. The controller accepts current joint states and target poses, and computes output velocities (`q_dot`) which are sent to the robot interface.
+#### Paradigm B: Stateful Velocity Controller
+The app instantiates a stateful **Velocity Controller** (e.g., `FlyingGripperTrackingController`) which internally handles stateful tracking (e.g., PID states, accumulated error). A controller may instantiate its own stateless **Kinematic Model** to evaluate differential kinematics. The controller accepts current joint states and a target pose, and computes output velocities (`q_dot`) which are sent to the robot interface.
 
-Here is the data routing and control flow for Option A:
+Here is the data routing and control flow for Option B:
 
 ```mermaid
 graph TD
