@@ -56,13 +56,12 @@ graph TD
         Kin["Stateless Kinematic Model<br/>(e.g., ToolFrameKinematics)"]
     end
 
-    %% Instantiation
     App -->|Instantiates| IF
     IF -->|Wraps| RC
     
     %% Paradigm A vs B
-    App -.-->|Option A: Instantiate Stateful| Ctrl
-    App -.-->|Option B: Instantiate Stateless| Kin
+    App -->|Option A: Stateful| Ctrl
+    App -->|Option B: Stateless| Kin
     Ctrl -->|Instantiates| Kin
 
     %% Data Flow
