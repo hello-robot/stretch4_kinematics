@@ -3,12 +3,10 @@ from enum import Enum, auto
 import numpy as np
 import pinocchio as pin
 
-from stretch4_kinematics.kinematic_models import (
-    StretchJointPositions,
-    StretchJointVelocities,
-    ToolFrameKinematics
-)
-
+from stretch4_kinematics.state.joint_positions import StretchJointPositions
+from stretch4_kinematics.state.joint_velocities import StretchJointVelocities
+from stretch4_kinematics.kinematic_models.tool_frame_kinematics import ToolFrameKinematics
+from stretch4_kinematics.controllers.base_controllers import StretchVelocityController
 
 class FlyingGripperState(Enum):
     """
@@ -19,119 +17,6 @@ class FlyingGripperState(Enum):
     RETRACT = auto()
     FINISH = auto()
     FAIL = auto()
-
-
-class StretchVelocityController:
-    """
-    Base velocity controller class for the Stretch 4 robot.
-    Provides utilities for enforcing joint velocity and position limits.
-    """
-    def __init__(self):
-        """
-        Initializes the StretchVelocityController base class, defining maximum 
-        joint velocities for safety clamping.
-        """
-        # joint velocity limits
-        self._v_max = StretchJointVelocities(
-            base_x=0.15,
-            base_y=0.15,
-            base_theta=np.deg2rad(60),
-            lift=0.1,
-            arm=0.1,
-            wrist_yaw=np.deg2rad(60),
-            wrist_pitch=np.deg2rad(60),
-            wrist_roll=np.deg2rad(60)
-        )
-
-    def _enforce_joint_velocity_limits(
-        self,
-        v_desired: StretchJointVelocities,
-    ) -> StretchJointVelocities:
-        """
-        Enforces joint velocity limits on the desired velocity commands.
-        
-        Args:
-            v_desired (StretchJointVelocities): The desired velocity commands.
-            
-        Returns:
-            StretchJointVelocities: The limited velocity commands.
-        """
-
-        v_limited = copy.deepcopy(v_desired)
-
-        # clip each joint
-        v_limited.base_x = np.clip(
-            v_limited.base_x,
-            -self._v_max.base_x,
-            self._v_max.base_x
-        )
-        v_limited.base_y = np.clip(
-            v_limited.base_y,
-            -self._v_max.base_y,
-            self._v_max.base_y
-        )
-        v_limited.base_theta = np.clip(
-            v_limited.base_theta,
-            -self._v_max.base_theta,
-            self._v_max.base_theta
-        )
-        v_limited.lift = np.clip(
-            v_limited.lift,
-            -self._v_max.lift,
-            self._v_max.lift
-        )
-        v_limited.arm = np.clip(
-            v_limited.arm,
-            -self._v_max.arm,
-            self._v_max.arm
-        )
-        v_limited.wrist_yaw = np.clip(
-            v_limited.wrist_yaw,
-            -self._v_max.wrist_yaw,
-            self._v_max.wrist_yaw
-        )
-        v_limited.wrist_pitch = np.clip(
-            v_limited.wrist_pitch,
-            -self._v_max.wrist_pitch,
-            self._v_max.wrist_pitch
-        )
-        v_limited.wrist_roll = np.clip(
-            v_limited.wrist_roll,
-            -self._v_max.wrist_roll,
-            self._v_max.wrist_roll
-        )
-        return v_limited
-
-    def _enforce_joint_position_limits(self, q_desired: StretchJointPositions) -> StretchJointPositions:
-        """
-        Enforces joint position limits on the desired joint positions.
-        Currently a placeholder that returns the input positions unchanged.
-
-        Args:
-             q_desired (StretchJointPositions): The desired joint positions.
-
-        Returns:
-             StretchJointPositions: The joint positions after enforcing limits.
-        """
-        q_limited = copy.deepcopy(q_desired)
-        # TODO: Implement limits
-        return q_limited
-
-    def update(
-        self,
-        dt: float,
-        current_pos: StretchJointPositions,
-        current_vel: StretchJointVelocities
-    ):
-        """
-        Abstract method to update the controller. Must be implemented by subclasses.
-
-        Args:
-            dt (float): Time step since last update.
-            current_pos (StretchJointPositions): Current joint positions.
-            current_vel (StretchJointVelocities): Current joint velocities.
-        """
-        raise NotImplementedError()
 
 
 class FlyingGripperController(StretchVelocityController):
@@ -180,7 +65,6 @@ class FlyingGripperController(StretchVelocityController):
             0.1,
             0.1,
         ])
-        # self._kd = np.zeros(6)
         self._ki = np.array([
             0.025,
             0.025,
@@ -189,7 +73,6 @@ class FlyingGripperController(StretchVelocityController):
             0.025,
             0.025,
         ])
-        # self._ki = np.zeros(6)
 
     def reset(self) -> None:
         """
@@ -301,7 +184,10 @@ class FlyingGripperController(StretchVelocityController):
         dt: float,
         current_pos: StretchJointPositions,
         current_vel: StretchJointVelocities,
-        target_pose: pin.SE3
+        target_pose: pin.SE3 = None,
+        target_xyz: np.ndarray = None,
+        target_quat: np.ndarray = None,
+        target_rpy: np.ndarray = None,
     ) -> tuple[StretchJointVelocities, FlyingGripperState]:
         """
         Core update loop for the flying gripper controller.
@@ -310,13 +196,22 @@ class FlyingGripperController(StretchVelocityController):
             dt (float): The time step.
             current_pos (StretchJointPositions): The current joint positions.
             current_vel (StretchJointVelocities): The current joint velocities.
-            target_pose (pin.SE3Pose): The target pose as a SE3Pose object.
+            target_pose (pin.SE3, optional): The target pose as a SE3 object.
+            target_xyz (np.ndarray, optional): The desired position of the target frame in the world frame.
+            target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
+            target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
 
         Returns:
             A tuple containing:
                 - StretchJointVelocities: The enforced velocity commands.
                 - FlyingGripperState: The new state.
         """
+        target_pose = self._parse_target_input(
+            target_pose=target_pose,
+            target_xyz=target_xyz,
+            target_quat=target_quat,
+            target_rpy=target_rpy
+        )
         error, d_error, i_error = self._compute_error(dt, current_pos, target_pose)
         v_desired = self._apply_gains(error, d_error, i_error)
         v_desired = self._apply_deadband(v_desired)

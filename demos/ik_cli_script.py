@@ -2,7 +2,10 @@
 import numpy as np
 import time
 
-from stretch4_kinematics.kinematic_models import StretchKinematics, StretchJointPositions
+from stretch4_body.robot.robot_client import RobotClient
+
+from stretch4_kinematics.kinematic_models import StretchKinematics
+from stretch4_kinematics.state import StretchJointPositions
 from stretch4_kinematics.stretch_interface import StretchInterface
 
 def prompt_float(name: str) -> float:
@@ -23,9 +26,12 @@ def main():
     
     # 2. Try to connect to the robot interface to get the current joint positions as a guess
     print("\nAttempting to connect to Stretch interface to get initial joint state guess...")
+    robot = None
+    interface = None
     try:
-        interface = StretchInterface()
-        interface.reset_odometry_offset()
+        robot = RobotClient()
+        robot.startup()
+        interface = StretchInterface(robot=robot)
         current_joint_state = interface.get_joint_position()
         print("Successfully connected to robot. Using current joint state as guess.")
     except Exception as e:
@@ -47,7 +53,7 @@ def main():
     q_guess = current_joint_state.to_pinocchio_q()
     
     print(f"\nSolving IK for target pose relative to base...")
-    ik_solution = solver.inverse_6dof(
+    ik_solution = solver.inverse_6dof_local(
         target_frame=target_frame,
         target_xyz=np.array([x, y, z]),
         target_rpy=np.array([r, p, yaw]),
@@ -60,16 +66,12 @@ def main():
 
     # 6. Prompt to confirm move
     confirm = input("\nEnter y to confirm move to joint state: ").strip().lower()
-    if confirm == 'y':
-        interface.reset_odometry_offset()
-        interface.move_to_pose(ik_solution)
+    if confirm == 'y' and interface is not None and robot is not None:
+        interface.move_to_local_pose(ik_solution)
         time.sleep(3.)
+        robot.stop()
     else:
         print("\nMove cancelled.")
-
-    # Clean up interface if connected
-    if 'interface' in locals():
-        interface.shutdown()
 
 if __name__ == '__main__':
     main()
