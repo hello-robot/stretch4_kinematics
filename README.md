@@ -47,10 +47,13 @@ Here is the data routing and control flow for Option A:
 ```mermaid
 graph TD
     App["Application (User Script)"]
-    IF["StretchInterface (Wrapper)"]
-    RC["RobotClient (Hardware Client) or ROS2 Driver"]
     Ctrl["Stateful Controller<br/>(e.g., FlyingGripperTrackingController)"]
     Kin["Stateless Kinematic Model<br/>(e.g., ToolFrameKinematics)"]
+
+    subgraph Hardware_Layer [Hardware Layer]
+        IF["StretchInterface (Wrapper)"]
+        RC["RobotClient (Hardware Client) or ROS2 Driver"]
+    end
 
     %% Data Flow
     RC -->|robot state| IF
@@ -71,9 +74,12 @@ Here is the data routing and control flow for Option B:
 ```mermaid
 graph TD
     App["Application (User Script)"]
-    IF["StretchInterface (Wrapper)"]
-    RC["RobotClient (Hardware Client) or ROS2 Driver"]
     Kin["Stateless Kinematic Model<br/>(e.g., StretchKinematics)"]
+
+    subgraph Hardware_Layer [Hardware Layer]
+        IF["StretchInterface (Wrapper)"]
+        RC["RobotClient (Hardware Client) or ROS2 Driver"]
+    end
 
     %% Data Flow
     RC -->|robot state| IF
