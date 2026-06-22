@@ -52,18 +52,12 @@ graph TD
     Ctrl["Stateful Controller<br/>(e.g., FlyingGripperTrackingController)"]
     Kin["Stateless Kinematic Model<br/>(e.g., ToolFrameKinematics)"]
 
-    %% Instantiation & Dependency
-    App -->|Instantiates| IF
-    IF -->|Wraps| RC
-    App -->|Instantiates| Ctrl
-    Ctrl -->|Instantiates| Kin
-
     %% Data Flow
-    RC -->|raw state| IF
-    IF -->|joint state| App
-    App -->|joint state, target| Ctrl
-    Ctrl -->|computes error & queries| Kin
-    Kin -->|stateless diff IK| Ctrl
+    RC -->|robot state| IF
+    IF -->|robot state| App
+    App -->|robot state, target| Ctrl
+    Ctrl -->|v_desired| Kin
+    Kin -->|q_dot| Ctrl
     Ctrl -->|q_dot| App
     App -->|q_dot| IF
     IF -->|q_dot| RC
@@ -81,18 +75,13 @@ graph TD
     RC["RobotClient (Hardware Client) or ROS2 Driver"]
     Kin["Stateless Kinematic Model<br/>(e.g., StretchKinematics)"]
 
-    %% Instantiation
-    App -->|Instantiates| IF
-    IF -->|Wraps| RC
-    App -->|Instantiates| Kin
-
     %% Data Flow
-    RC -->|raw state| IF
-    IF -->|joint state| App
-    App -->|joint state, target| Kin
-    Kin -->|solves numerical IK| App
-    App -->|solved q| IF
-    IF -->|joint position commands| RC
+    RC -->|robot state| IF
+    IF -->|robot state| App
+    App -->|robot state, target| Kin
+    Kin -->|q or q_dot| App
+    App -->|q or q_dot| IF
+    IF -->|q or q_dot| RC
 ```
 
 ---
