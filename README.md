@@ -38,39 +38,61 @@ It provides:
 
 ### Control & State Architecture
 An application utilizing this library operates under one of two paradigms:
-1. **Stateful Control:** The app instantiates a stateful **Controller** (e.g. `FlyingGripperTrackingController`) which internally handles PID states/integrals and instantiates its own stateless **Kinematic Model** to evaluate differential kinematics.
-2. **Stateless Solver:** The app directly instantiates a stateless **Kinematic Model** (e.g. `StretchKinematics` or `ToolFrameKinematics`) to compute FK/IK on the fly.
 
-In both cases, the application queries current positions/velocities from `StretchInterface` (which wraps the low-level hardware `RobotClient`), processes them through the solver or controller, and passes the resulting joint commands back to `StretchInterface` for execution.
+#### Paradigm A: Stateful Control (Option A)
+The app instantiates a stateful **Controller** (e.g., `FlyingGripperTrackingController`) which internally handles PID states/integrals and instantiates its own stateless **Kinematic Model** to evaluate differential kinematics. The controller accepts current joint states and target poses, and computes output velocities (`q_dot`) which are sent to the robot interface.
 
-Here is the data routing and abstraction flow:
+Here is the data routing and control flow for Option A:
 
 ```mermaid
 graph TD
     App["Application (User Script)"]
     IF["StretchInterface (Wrapper)"]
-    RC["RobotClient (Hardware Client) or Stretch 4 ROS2 Driver"]
-    
+    RC["RobotClient (Hardware Client) or ROS2 Driver"]
     Ctrl["Stateful Controller<br/>(e.g., FlyingGripperTrackingController)"]
     Kin["Stateless Kinematic Model<br/>(e.g., ToolFrameKinematics)"]
-    
-    %% Paradigm A vs B
-    App -->|Option A: Stateful| Ctrl
-    App -->|Option B: Stateless| Kin
+
+    %% Instantiation & Dependency
+    App -->|Instantiates| IF
+    IF -->|Wraps| RC
+    App -->|Instantiates| Ctrl
     Ctrl -->|Instantiates| Kin
 
     %% Data Flow
-    RC -->|robot state| IF
-    IF -->|robot state| App
-    
-    App -->|robot state, target| Ctrl
+    RC -->|raw state| IF
+    IF -->|joint state| App
+    App -->|joint state, target| Ctrl
+    Ctrl -->|computes error & queries| Kin
+    Kin -->|stateless diff IK| Ctrl
     Ctrl -->|q_dot| App
-    
-    App -->|robot state, target| Kin
-    Kin -->|q_dot| App
-    
     App -->|q_dot| IF
     IF -->|q_dot| RC
+```
+
+#### Paradigm B: Stateless Solver (Option B)
+The app directly instantiates a stateless **Kinematic Model** (e.g., `StretchKinematics` or `ToolFrameKinematics`) to compute FK/IK on the fly. The app queries the current joint state, solves the position IK for a target pose, and commands the robot interface to move to the solved position configuration (`q`).
+
+Here is the data routing and control flow for Option B:
+
+```mermaid
+graph TD
+    App["Application (User Script)"]
+    IF["StretchInterface (Wrapper)"]
+    RC["RobotClient (Hardware Client) or ROS2 Driver"]
+    Kin["Stateless Kinematic Model<br/>(e.g., StretchKinematics)"]
+
+    %% Instantiation
+    App -->|Instantiates| IF
+    IF -->|Wraps| RC
+    App -->|Instantiates| Kin
+
+    %% Data Flow
+    RC -->|raw state| IF
+    IF -->|joint state| App
+    App -->|joint state, target| Kin
+    Kin -->|solves numerical IK| App
+    App -->|solved q| IF
+    IF -->|joint position commands| RC
 ```
 
 ---
