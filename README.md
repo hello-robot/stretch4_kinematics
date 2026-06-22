@@ -39,8 +39,32 @@ It provides:
 ### Control & State Architecture
 An application utilizing this library operates under one of two paradigms:
 
-#### Paradigm A: Stateful Control (Option A)
-The app instantiates a stateful **Controller** (e.g., `FlyingGripperTrackingController`) which internally handles PID states/integrals and instantiates its own stateless **Kinematic Model** to evaluate differential kinematics. The controller accepts current joint states and target poses, and computes output velocities (`q_dot`) which are sent to the robot interface.
+#### Paradigm A: Stateless Solver
+The app directly instantiates a stateless **Kinematic Model** (e.g., `StretchKinematics` or `ToolFrameKinematics`) to compute FK/IK on the fly. The app queries the current joint state, solves the position `q` for a target pose or velocity `q_dot` for a target velocity, and commands the robot interface to move to the solved `q` or `q_dot`.
+
+Here is the data routing and control flow for Option B:
+
+```mermaid
+graph TD
+    App["Application (User Script)"]
+    Kin["Stateless Kinematic Model<br/>(e.g., StretchKinematics)"]
+
+    subgraph Hardware_Layer [Hardware Layer]
+        IF["StretchInterface (Wrapper)"]
+        RC["RobotClient (Hardware Client) or ROS2 Driver"]
+    end
+
+    %% Data Flow
+    RC -->|robot state| IF
+    IF -->|robot state| App
+    App -->|robot state, target| Kin
+    Kin -->|q or q_dot| App
+    App -->|q or q_dot| IF
+    IF -->|q or q_dot| RC
+```
+
+#### Paradigm B: Stateful Controller
+The app instantiates a stateful **Controller** (e.g., `FlyingGripperTrackingController`) which internally handles stateful tracking (e.g., PID states, accumulated error). A controller may instantiate its own stateless **Kinematic Model** to evaluate differential kinematics. The controller accepts current joint states and target poses, and computes output velocities (`q_dot`) which are sent to the robot interface.
 
 Here is the data routing and control flow for Option A:
 
@@ -64,30 +88,6 @@ graph TD
     Ctrl -->|q_dot| App
     App -->|q_dot| IF
     IF -->|q_dot| RC
-```
-
-#### Paradigm B: Stateless Solver (Option B)
-The app directly instantiates a stateless **Kinematic Model** (e.g., `StretchKinematics` or `ToolFrameKinematics`) to compute FK/IK on the fly. The app queries the current joint state, solves the position IK for a target pose, and commands the robot interface to move to the solved position configuration (`q`).
-
-Here is the data routing and control flow for Option B:
-
-```mermaid
-graph TD
-    App["Application (User Script)"]
-    Kin["Stateless Kinematic Model<br/>(e.g., StretchKinematics)"]
-
-    subgraph Hardware_Layer [Hardware Layer]
-        IF["StretchInterface (Wrapper)"]
-        RC["RobotClient (Hardware Client) or ROS2 Driver"]
-    end
-
-    %% Data Flow
-    RC -->|robot state| IF
-    IF -->|robot state| App
-    App -->|robot state, target| Kin
-    Kin -->|q or q_dot| App
-    App -->|q or q_dot| IF
-    IF -->|q or q_dot| RC
 ```
 
 ---
