@@ -8,18 +8,17 @@ from stretch4_kinematics.state.joint_velocities import StretchJointVelocities
 from stretch4_kinematics.kinematic_models.tool_frame_kinematics import ToolFrameKinematics
 from stretch4_kinematics.controllers.base_controllers import StretchVelocityController
 
-class FlyingGripperState(Enum):
+class FlyingGripperTrackingState(Enum):
     """
     Flying gripper controller states.
     """
     IDLE = auto()
     APPROACH = auto()
-    RETRACT = auto()
     FINISH = auto()
     FAIL = auto()
 
 
-class FlyingGripperController(StretchVelocityController):
+class FlyingGripperTrackingController(StretchVelocityController):
     def __init__(self):
         """
         Initializes the FlyingGripperController, setting up the PID gains,
@@ -27,11 +26,15 @@ class FlyingGripperController(StretchVelocityController):
         """
         super().__init__()
         self._kinematics_solver = ToolFrameKinematics()
-        self._state = FlyingGripperState.IDLE
+        self._state = FlyingGripperTrackingState.IDLE
+
+        # task params
+        self._translation_tolerance = 0.01  # meters
+        # self._rotation_tolerance = np.deg2rad(2.0)  # rad  # UNUSED
 
         # control params
         self._control_gain = 0.5
-        self._wrist_jog_lookahead_gain = 2.0
+        self._wrist_jog_lookahead_gain = 1.0
 
         # velocity deadband
         self._velocity_deadband = np.array([
@@ -81,6 +84,7 @@ class FlyingGripperController(StretchVelocityController):
         self._pose_error_integrator = np.zeros(6)
         self._previous_error = np.zeros(6)
         self._first_step = True
+        self._state = FlyingGripperTrackingState.IDLE
 
     def _compute_error(
         self,
@@ -188,7 +192,7 @@ class FlyingGripperController(StretchVelocityController):
         target_xyz: np.ndarray = None,
         target_quat: np.ndarray = None,
         target_rpy: np.ndarray = None,
-    ) -> tuple[StretchJointVelocities, FlyingGripperState]:
+    ) -> tuple[StretchJointVelocities, FlyingGripperTrackingState]:
         """
         Core update loop for the flying gripper controller.
 
@@ -206,16 +210,30 @@ class FlyingGripperController(StretchVelocityController):
                 - StretchJointVelocities: The enforced velocity commands.
                 - FlyingGripperState: The new state.
         """
+        # get target pose
         target_pose = self._parse_target_input(
             target_pose=target_pose,
             target_xyz=target_xyz,
             target_quat=target_quat,
             target_rpy=target_rpy
         )
+
+        # compute error and check termination
         error, d_error, i_error = self._compute_error(dt, current_pos, target_pose)
+        translation_err = np.linalg.norm(error[:3])
+
+        # check if finished
+        if translation_err < self._translation_tolerance:
+            self._state = FlyingGripperTrackingState.FINISH
+            return StretchJointVelocities(), self._state
+        else:
+            self._state = FlyingGripperTrackingState.APPROACH
+
+        # compute desired velocity
         v_desired = self._apply_gains(error, d_error, i_error)
         v_desired = self._apply_deadband(v_desired)
 
+        # compute joint velocities
         dq = self._kinematics_solver.differential_ik(
             current_pos,
             "tool_attachment_site_link",
@@ -228,5 +246,5 @@ class FlyingGripperController(StretchVelocityController):
         dq.wrist_roll *= self._wrist_jog_lookahead_gain
 
         dq_limited = self._enforce_joint_velocity_limits(dq)
-        
+
         return dq_limited, self._state

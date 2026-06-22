@@ -22,14 +22,6 @@ from stretch4_kinematics.stretch_interface import StretchInterface
 from gamepad_mapper import GamepadMapper
 
 
-class TeleopMode(Enum):
-    """
-    Control modes for teleoperation.
-    """
-    GRIPPER_FRAME = auto()
-    JOINT_SPACE = auto()
-
-
 class TeleopSpeed(Enum):
     """
     Speed profiles for teleoperation.
@@ -64,7 +56,6 @@ class GamepadCommand:
     """
     Structured data containing parsed gamepad command flags and values.
     """
-    toggle_mode: bool = False
     open_gripper: bool = False
     close_gripper: bool = False
     v_desired: np.ndarray | None = None  # shape (3,)
@@ -98,7 +89,6 @@ def parse_gamepad_command(cmd: dict | None) -> GamepadCommand:
     wrist_control_active = right_trigger > 0.1
 
     return GamepadCommand(
-        toggle_mode=bool(cmd.get("toggle", False)),
         open_gripper=(cmd.get("grip") == "OPEN"),
         close_gripper=(cmd.get("grip") == "CLOSE"),
         v_desired=np.array(cmd.get("v_desired", [0.0, 0.0, 0.0])),
@@ -193,55 +183,11 @@ class FlyingGripperTeleop:
         self.vel_grip = params["stretch_gripper"]["motion"][motion_prof]["vel"]
         self.acc_grip = params["stretch_gripper"]["motion"][motion_prof]["accel"]
 
-    def _compute_joint_space_vels(
-        self, cmd: GamepadCommand, v_scale: float, w_scale: float
-    ) -> StretchJointVelocities:
-        """
-        Computes joint velocities for direct joint-space mapping (Mode 3).
-
-        Args:
-            cmd: Parsed gamepad command object.
-            v_scale: Scaled translational velocity factor.
-            w_scale: Scaled rotational velocity factor.
-
-        Returns:
-            StretchJointVelocities: Commanded joint velocities.
-        """
-        v_joint = StretchJointVelocities()
-        v_joint.lift = cmd.v_desired[2] * v_scale
-
-        if cmd.wrist_control_active:
-            # Arm Extend/Retract (Left Stick Y)
-            v_joint.arm = cmd.v_desired[0] * v_scale
-            
-            # Wrist Roll (Left Stick X)
-            v_joint.wrist_roll = cmd.v_desired[1] * w_scale * -1.0
-            
-            # Wrist Pitch (Right Stick Y)
-            v_joint.wrist_pitch = cmd.rot_change[1] * w_scale
-            
-            # Wrist Yaw (Right Stick X)
-            v_joint.wrist_yaw = cmd.rot_change[0] * w_scale
-        else:
-            # Base Translation Forward/Backward (Left Stick Y)
-            v_joint.base_x = cmd.v_desired[0] * v_scale
-            
-            # Base Translation Left/Right (Left Stick X)
-            v_joint.base_y = cmd.v_desired[1] * v_scale
-            
-            # Base Rotation (Right Stick X)
-            v_joint.base_theta = cmd.rot_change[0] * w_scale
-            
-            # Arm (Right Stick Y)
-            v_joint.arm = cmd.rot_change[1] * v_scale
-
-        return v_joint
-
     def _compute_gripper_frame_vels(
         self, cmd: GamepadCommand, v_scale: float, w_scale: float, pitch_sign_mult: float
     ) -> StretchJointVelocities:
         """
-        Computes joint velocities for gripper-frame relative control (Mode 1).
+        Computes joint velocities for gripper-frame relative control.
 
         Args:
             cmd: Parsed gamepad command object.
@@ -305,7 +251,6 @@ class FlyingGripperTeleop:
         Starts the teleoperation loop.
         """
         # loop config
-        control_mode = TeleopMode.GRIPPER_FRAME
         hz = 50.0
         dt = 1.0 / hz
         rate = time.time()
@@ -317,10 +262,7 @@ class FlyingGripperTeleop:
         pitch_sign_mult = -1.0  # flip with respect to joystick
 
         print("====================================")
-        print("Gripper-Centric Teleop Started")
-        print("Press Top Button (Y) to Toggle Modes")
-        print("Mode 1: Gripper Frame Relative (IK)")
-        print("Mode 3: Joint-Space Direct Control")
+        print("Flying Gripper Teleop Started")
         print("Ctrl+C to Quit")
         print("====================================")
 
@@ -345,19 +287,6 @@ class FlyingGripperTeleop:
                 # Parse raw commands into flags for controller behavior
                 cmd = parse_gamepad_command(raw_cmd)
 
-                # toggle control mode
-                if cmd.toggle_mode:
-                    if control_mode == TeleopMode.GRIPPER_FRAME:
-                        control_mode = TeleopMode.JOINT_SPACE
-                    else:
-                        control_mode = TeleopMode.GRIPPER_FRAME
-                    
-                    mode_names = {
-                        TeleopMode.GRIPPER_FRAME: "Gripper Frame Relative (IK)",
-                        TeleopMode.JOINT_SPACE: "Joint-Space Direct Control",
-                    }
-                    print(f"--> Switched to Mode {control_mode}: {mode_names[control_mode]}")
-
                 # Gripper Command
                 if cmd.open_gripper:
                     if not self.numerical_mode:
@@ -381,12 +310,9 @@ class FlyingGripperTeleop:
                 w_scale = self.gamepad_speed_rot * cmd.speed_multiplier
 
                 # Compute desired joint velocities based on control mode
-                if control_mode == TeleopMode.JOINT_SPACE:
-                    v_joint = self._compute_joint_space_vels(cmd, v_scale, w_scale)
-                else:
-                    v_joint = self._compute_gripper_frame_vels(
-                        cmd, v_scale, w_scale, pitch_sign_mult
-                    )
+                v_joint = self._compute_gripper_frame_vels(
+                    cmd, v_scale, w_scale, pitch_sign_mult
+                )
 
                 # Check if any non-zero velocity is commanded
                 is_active = (

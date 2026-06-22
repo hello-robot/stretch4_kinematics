@@ -12,16 +12,16 @@ from stretch4_kinematics.state import (
     StretchJointVelocities,
 )
 from stretch4_kinematics.controllers import (
-    FlyingGripperController,
-    FlyingGripperState,
+    FlyingGripperTrackingController,
+    FlyingGripperTrackingState,
 )
 
-class FlyingGripperScript:
+class FlyingGripperTrackingScript:
     def __init__(self):
         self.robot = RobotClient()
         self.robot.startup()
         self.robot_interface = StretchInterface(robot=self.robot)
-        self.controller = FlyingGripperController()
+        self.controller = FlyingGripperTrackingController()
     
     def test_numerical_run(self, target_pose: pin.SE3):
         """
@@ -111,7 +111,7 @@ class FlyingGripperScript:
                 # current_vel.pretty_print()
 
                 v_limited, state = self.controller.update(dt, current_pos, current_vel, target_pose)
-                print(f"Next Velocity: ")
+                print(f"\n{state}\nNext Velocity: ")
                 v_limited.pretty_print()
 
                 self.robot_interface.cmd_velocities(v_limited)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     target_pose.translation = np.array([1.1, -0.1, 1.0])
     target_pose.rotation = np.eye(3)
 
-    script = FlyingGripperScript()
+    script = FlyingGripperTrackingScript()
 
     if args.numerical:
         script.test_numerical_run(target_pose)

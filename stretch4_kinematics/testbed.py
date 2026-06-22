@@ -14,7 +14,7 @@ from stretch4_kinematics.kinematic_models import (
     PlanarToolFrameKinematics,
     CylindricalToolFrameKinematics,
 )
-from stretch4_kinematics.controllers.flying_gripper_controller import FlyingGripperController
+from stretch4_kinematics.controllers.flying_gripper_tracking_controller import FlyingGripperTrackingController
 
 
 def test_load_urdf():
@@ -128,8 +128,8 @@ def test_kinematics_library():
 
 def test_controls_library():
     print("\n--- Testing Controls Library ---")
-    controller = FlyingGripperController()
-    print("FlyingGripperController successfully initialized.")
+    controller = FlyingGripperTrackingController()
+    print("FlyingGripperTrackingController successfully initialized.")
 
     dt = 0.05
     # Initialize joint state
