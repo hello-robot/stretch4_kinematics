@@ -184,7 +184,10 @@ class FlyingGripperController(StretchVelocityController):
         dt: float,
         current_pos: StretchJointPositions,
         current_vel: StretchJointVelocities,
-        target_pose: pin.SE3
+        target_pose: pin.SE3 = None,
+        target_xyz: np.ndarray = None,
+        target_quat: np.ndarray = None,
+        target_rpy: np.ndarray = None,
     ) -> tuple[StretchJointVelocities, FlyingGripperState]:
         """
         Core update loop for the flying gripper controller.
@@ -193,13 +196,22 @@ class FlyingGripperController(StretchVelocityController):
             dt (float): The time step.
             current_pos (StretchJointPositions): The current joint positions.
             current_vel (StretchJointVelocities): The current joint velocities.
-            target_pose (pin.SE3): The target pose as a SE3 object.
+            target_pose (pin.SE3, optional): The target pose as a SE3 object.
+            target_xyz (np.ndarray, optional): The desired position of the target frame in the world frame.
+            target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
+            target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
 
         Returns:
             A tuple containing:
                 - StretchJointVelocities: The enforced velocity commands.
                 - FlyingGripperState: The new state.
         """
+        target_pose = self._parse_target_input(
+            target_pose=target_pose,
+            target_xyz=target_xyz,
+            target_quat=target_quat,
+            target_rpy=target_rpy
+        )
         error, d_error, i_error = self._compute_error(dt, current_pos, target_pose)
         v_desired = self._apply_gains(error, d_error, i_error)
         v_desired = self._apply_deadband(v_desired)

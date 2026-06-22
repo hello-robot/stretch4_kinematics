@@ -1,5 +1,6 @@
 import copy
 import numpy as np
+import pinocchio as pin
 
 from stretch4_kinematics.state.joint_positions import StretchJointPositions
 from stretch4_kinematics.state.joint_velocities import StretchJointVelocities
@@ -99,18 +100,80 @@ class StretchVelocityController:
         # TODO: Implement limits
         return q_limited
 
+    def _parse_target_input(
+        self,
+        target_pose,
+        target_xyz,
+        target_quat,
+        target_rpy
+    ) -> pin.SE3:
+        """
+        Parses the provided target inputs into a standard pin.SE3 pose object.
+        Provide either a target_pose, or a target_xyz and target_quat/target_rpy.
+        If target_pose is provided, the other arguments will be ignored.
+
+        Args:
+            target_pose (pin.SE3, optional): The desired pose of the target frame in the world frame.
+            target_xyz (np.ndarray, optional): The desired position of the target frame in the world frame.
+            target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
+            target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
+
+        Returns:
+            pin.SE3: The parsed target pose.
+
+        Raises:
+            ValueError: If both target_pose and target_xyz are None.
+        """
+        if target_pose is None:
+            if target_xyz is None:
+                raise ValueError("Must specify either 'target_pose' or 'target_xyz' position.")
+            
+            # Position
+            translation = np.array(target_xyz, dtype=float)
+            
+            # Orientation
+            if target_quat is not None:
+                # Normalize quaternion to prevent numerical issues
+                q_xyzw = np.array(target_quat, dtype=float)
+                q_xyzw /= np.linalg.norm(q_xyzw)
+                # Pinocchio Quaternion constructor signature: Quaternion(w, x, y, z)
+                rotation = pin.Quaternion(q_xyzw[3], q_xyzw[0], q_xyzw[1], q_xyzw[2]).matrix()
+            elif target_rpy is not None:
+                # Convert RPY (Roll-Pitch-Yaw) in radians to a rotation matrix
+                rotation = pin.rpy.rpyToMatrix(np.array(target_rpy, dtype=float))
+            else:
+                # Default to identity rotation if none specified
+                rotation = np.eye(3)
+                
+            target_pose = pin.SE3(rotation, translation)
+
+            return target_pose
+        else:
+            return target_pose
+
     def update(
         self,
         dt: float,
         current_pos: StretchJointPositions,
-        current_vel: StretchJointVelocities
+        current_vel: StretchJointVelocities,
+        target_pose: pin.SE3 = None,
+        target_xyz: np.ndarray = None,
+        target_quat: np.ndarray = None,
+        target_rpy: np.ndarray = None,
     ):
         """
         Abstract method to update the controller. Must be implemented by subclasses.
+
+        Provide either a target_pose, or a target_xyz and target_quat/target_rpy.
+        If target_pose is provided, the other arguments will be ignored.
 
         Args:
             dt (float): Time step since last update.
             current_pos (StretchJointPositions): Current joint positions.
             current_vel (StretchJointVelocities): Current joint velocities.
+            target_pose (pin.SE3, optional): The desired pose of the target frame in the world frame.
+            target_xyz (np.ndarray, optional): The desired position of the target frame in the world frame.
+            target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
+            target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
         """
         raise NotImplementedError()

@@ -14,6 +14,8 @@ from stretch4_kinematics.kinematic_models import (
     PlanarToolFrameKinematics,
     CylindricalToolFrameKinematics,
 )
+from stretch4_kinematics.controllers.flying_gripper_controller import FlyingGripperController
+
 
 def test_load_urdf():
     # load yourdfpy with the urdf file from the hello-robot-stretch4-urdf package
@@ -124,6 +126,93 @@ def test_kinematics_library():
     except NotImplementedError:
         print("  [Diff IK] differential_ik() is defined but not yet implemented.")
 
+def test_controls_library():
+    print("\n--- Testing Controls Library ---")
+    controller = FlyingGripperController()
+    print("FlyingGripperController successfully initialized.")
+
+    dt = 0.05
+    # Initialize joint state
+    current_pos = StretchJointPositions()
+    current_vel = StretchJointVelocities()
+
+    # 1. Test target_pose input (pin.SE3)
+    print("\nTesting input: target_pose (pin.SE3)")
+    target_pose = pin.SE3.Identity()
+    target_pose.translation = np.array([0.3, 0.1, 0.5])
+    target_pose.rotation = np.eye(3)
+    
+    v_cmd, state = controller.update(
+        dt=dt,
+        current_pos=current_pos,
+        current_vel=current_vel,
+        target_pose=target_pose
+    )
+    print(f"  Controller state: {state}")
+    print("  Commanded velocities:")
+    v_cmd.pretty_print()
+
+    # Reset controller state for next test
+    controller.reset()
+
+    # 2. Test target_xyz input only
+    print("\nTesting input: target_xyz only")
+    target_xyz = np.array([0.3, 0.1, 0.5])
+    v_cmd, state = controller.update(
+        dt=dt,
+        current_pos=current_pos,
+        current_vel=current_vel,
+        target_xyz=target_xyz
+    )
+    print(f"  Controller state: {state}")
+    print("  Commanded velocities:")
+    v_cmd.pretty_print()
+
+    controller.reset()
+
+    # 3. Test target_xyz + target_quat input
+    print("\nTesting input: target_xyz + target_quat")
+    target_quat = np.array([0.0, 0.0, 0.0, 1.0])
+    v_cmd, state = controller.update(
+        dt=dt,
+        current_pos=current_pos,
+        current_vel=current_vel,
+        target_xyz=target_xyz,
+        target_quat=target_quat
+    )
+    print(f"  Controller state: {state}")
+    print("  Commanded velocities:")
+    v_cmd.pretty_print()
+
+    controller.reset()
+
+    # 4. Test target_xyz + target_rpy input
+    print("\nTesting input: target_xyz + target_rpy")
+    target_rpy = np.array([0.1, -0.2, 0.3])
+    v_cmd, state = controller.update(
+        dt=dt,
+        current_pos=current_pos,
+        current_vel=current_vel,
+        target_xyz=target_xyz,
+        target_rpy=target_rpy
+    )
+    print(f"  Controller state: {state}")
+    print("  Commanded velocities:")
+    v_cmd.pretty_print()
+
+    controller.reset()
+
+    # 5. Test invalid input (both target_pose and target_xyz are None)
+    print("\nTesting input: invalid (no target)")
+    try:
+        controller.update(
+            dt=dt,
+            current_pos=current_pos,
+            current_vel=current_vel
+        )
+        print("  WARNING: Expected ValueError, but no exception was raised!")
+    except ValueError as e:
+        print(f"  Success: Raised expected ValueError: {e}")
 
 
 ###############################################
@@ -132,6 +221,7 @@ def main():
     test_load_urdf_calibrated()
     test_forward_kinematics()
     test_kinematics_library()
+    test_controls_library()
 
 if __name__ == '__main__':
     main()
