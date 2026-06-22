@@ -49,15 +49,10 @@ Here is the data routing and abstraction flow:
 graph TD
     App["Application (User Script)"]
     IF["StretchInterface (Wrapper)"]
-    RC["RobotClient (Hardware Client)"]
+    RC["RobotClient (Hardware Client) or Stretch 4 ROS2 Driver"]
     
-    subgraph Core Library
-        Ctrl["Stateful Controller<br/>(e.g., FlyingGripperTrackingController)"]
-        Kin["Stateless Kinematic Model<br/>(e.g., ToolFrameKinematics)"]
-    end
-
-    App -->|Instantiates| IF
-    IF -->|Wraps| RC
+    Ctrl["Stateful Controller<br/>(e.g., FlyingGripperTrackingController)"]
+    Kin["Stateless Kinematic Model<br/>(e.g., ToolFrameKinematics)"]
     
     %% Paradigm A vs B
     App -->|Option A: Stateful| Ctrl
@@ -65,17 +60,17 @@ graph TD
     Ctrl -->|Instantiates| Kin
 
     %% Data Flow
-    RC -->|Raw Joint Dicts| IF
-    IF -->|StretchJointPositions / Velocities| App
+    RC -->|robot state| IF
+    IF -->|robot state| App
     
-    App -->|Current States & Targets| Ctrl
-    Ctrl -->|Computed Velocities| App
+    App -->|robot state, target| Ctrl
+    Ctrl -->|q_dot| App
     
-    App -->|Current States & Targets| Kin
-    Kin -->|Solved Joint States| App
+    App -->|robot state, target| Kin
+    Kin -->|q_dot| App
     
-    App -->|Position / Velocity Commands| IF
-    IF -->|Safety-Clipped Commands| RC
+    App -->|q_dot| IF
+    IF -->|q_dot| RC
 ```
 
 ---
