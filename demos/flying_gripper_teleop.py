@@ -18,7 +18,12 @@ from stretch4_kinematics.state import (
 )
 from stretch4_kinematics.stretch_interface import StretchInterface
 
+# local import
 from gamepad_mapper import GamepadMapper
+
+
+# Lookahead gain for wrist movements to compensate for communication and motor lag
+WRIST_JOG_LOOKAHEAD_GAIN = 2.0
 
 
 class TeleopMode(Enum):
@@ -27,6 +32,35 @@ class TeleopMode(Enum):
     """
     GRIPPER_FRAME = auto()
     JOINT_SPACE = auto()
+
+
+class TeleopSpeed(Enum):
+    """
+    Speed profiles for teleoperation.
+    """
+    LOW = auto()
+    MEDIUM = auto()
+    HIGH = auto()
+    MAX = auto()
+
+    @classmethod
+    def from_str(cls, speed: str) -> TeleopSpeed:
+        """Convert string to TeleopSpeed."""
+        speed = speed.lower().strip()
+        if speed == "low": return cls.LOW
+        if speed == "medium": return cls.MEDIUM
+        if speed == "high": return cls.HIGH
+        if speed == "max": return cls.MAX
+        raise ValueError(f"Unknown speed profile: {speed}")
+
+    def to_floats(self) -> tuple[float, float]:
+        """
+        Returns (translation_speed, rotation_speed).
+        """
+        if self == TeleopSpeed.LOW: return 0.05, 0.4
+        if self == TeleopSpeed.MEDIUM: return 0.15, 0.5
+        if self == TeleopSpeed.HIGH: return 0.25, 1.0
+        if self == TeleopSpeed.MAX: return 0.25, 1.0
 
 
 @dataclass
@@ -78,25 +112,20 @@ def parse_gamepad_command(cmd: dict | None) -> GamepadCommand:
     )
 
 
-# Lookahead gain for wrist movements to compensate for communication and motor lag
-WRIST_JOG_LOOKAHEAD_GAIN = 2.0
-
-
 class FlyingGripperTeleop:
     """
     Main class for running gripper-centric teleoperation.
     """
 
-    def __init__(self, speed: str = "medium", numerical: bool = False) -> None:
+    def __init__(self, speed: TeleopSpeed = TeleopSpeed.MEDIUM, numerical_mode: bool = False) -> None:
         """
         Initializes the teleoperation node.
 
         Args:
-            speed: Speed profile ('low', 'medium', 'high', 'max').
-            numerical: Run numerically in simulation mode.
+            speed (TeleopSpeed): Teleoperation speed. One of low, medium, high, max.
+            numerical_mode (bool): Run numerically in simulation mode.
         """
-        self.numerical = numerical
-        self.speed = speed
+        self.numerical_mode = numerical_mode
 
         # Initialize gamepad
         print("Initializing Gamepad Mapper...")
@@ -107,7 +136,7 @@ class FlyingGripperTeleop:
             sys.exit(1)
 
         # Initialize hardware/simulation
-        if self.numerical:
+        if self.numerical_mode:
             print("Running in NUMERICAL simulation mode.")
             self.robot = None
             self.robot_interface = None
@@ -140,37 +169,33 @@ class FlyingGripperTeleop:
         # Configure velocity scaling profiles
         self._initialize_velocity_profiles(speed)
 
-    def _initialize_velocity_profiles(self, speed: str) -> None:
+    def _initialize_velocity_profiles(self, speed: TeleopSpeed) -> None:
         """
         Configures the velocity scaling parameters using RobotParams.
 
         Args:
             speed: The selected speed profile.
         """
+        # Scale joystick commands
+        translation_speed, rotation_speed = speed.to_floats()
+        self.gamepad_speed_trans = translation_speed
+        self.gamepad_speed_rot = rotation_speed
+        
+        # Get motion profile settings from RobotParams
         params = RobotParams().get_params()[1]
         
+        # Map TeleopSpeed enum to motion profile names
         speed_mapping = {
-            "low": "slow",
-            "medium": "default",
-            "high": "fast",
-            "max": "max",
+            TeleopSpeed.LOW: "slow",
+            TeleopSpeed.MEDIUM: "default",
+            TeleopSpeed.HIGH: "fast",
+            TeleopSpeed.MAX: "max",
         }
         motion_prof = speed_mapping[speed]
 
         # Extract gripper velocity/acceleration settings
         self.vel_grip = params["stretch_gripper"]["motion"][motion_prof]["vel"]
         self.acc_grip = params["stretch_gripper"]["motion"][motion_prof]["accel"]
-
-        # Scale joystick commands
-        if speed == "low":
-            self.gamepad_speed_trans = 0.05
-            self.gamepad_speed_rot = 0.4
-        elif speed == "medium":
-            self.gamepad_speed_trans = 0.15
-            self.gamepad_speed_rot = 0.5
-        else:
-            self.gamepad_speed_trans = 0.25
-            self.gamepad_speed_rot = 1.0
 
     def _compute_joint_space_vels(
         self, cmd: GamepadCommand, v_scale: float, w_scale: float
@@ -231,6 +256,7 @@ class FlyingGripperTeleop:
         Returns:
             StretchJointVelocities: Commanded joint velocities.
         """
+        # Translation only (no rotation)
         v_desired_lin = cmd.v_desired * v_scale
         v_desired_6d = np.zeros(6)
         v_desired_6d[:3] = v_desired_lin
@@ -288,7 +314,7 @@ class FlyingGripperTeleop:
         Starts the teleoperation loop.
         """
         control_mode = TeleopMode.GRIPPER_FRAME
-        hz = 30.0
+        hz = 50.0
         dt = 1.0 / hz
         rate = time.time()
         last_pushed_was_zero = False
@@ -311,13 +337,13 @@ class FlyingGripperTeleop:
                 raw_cmd = self.gamepad.get_commands()
 
                 # Get current joint status
-                if not self.numerical:
+                if not self.numerical_mode:
                     self.current_pos = self.robot_interface.get_joint_position()
 
                 # If no command, zero velocity and continue
                 if not raw_cmd:
                     if not last_pushed_was_zero:
-                        if not self.numerical:
+                        if not self.numerical_mode:
                             self.robot_interface.cmd_zero_velocity()
                         last_pushed_was_zero = True
                     time.sleep(dt)
@@ -340,7 +366,7 @@ class FlyingGripperTeleop:
 
                 # Gripper Command
                 if cmd.open_gripper:
-                    if not self.numerical:
+                    if not self.numerical_mode:
                         self.robot.end_of_arm.move_by(
                             "stretch_gripper",
                             gripper_open_pct,
@@ -348,7 +374,7 @@ class FlyingGripperTeleop:
                             self.acc_grip,
                         )
                 elif cmd.close_gripper:
-                    if not self.numerical:
+                    if not self.numerical_mode:
                         self.robot.end_of_arm.move_by(
                             "stretch_gripper",
                             gripper_close_pct,
@@ -378,7 +404,7 @@ class FlyingGripperTeleop:
                 # Execute command in either simulation or on real hardware
                 if is_active:
                     # Simulate step if numerical, otherwise send to hardware
-                    if self.numerical:
+                    if self.numerical_mode:
                         self.current_pos = self._integrate_simulation_step(v_joint, dt)
 
                         # Print simulated telemetry
@@ -394,7 +420,7 @@ class FlyingGripperTeleop:
                     last_pushed_was_zero = False
                 elif not last_pushed_was_zero:
                     # Send zero velocity when no command
-                    if not self.numerical:
+                    if not self.numerical_mode:
                         self.robot_interface.cmd_zero_velocity()
                     last_pushed_was_zero = True
 
@@ -417,13 +443,13 @@ class FlyingGripperTeleop:
         Safely stops the robot and stops the gamepad mapper thread.
         """
         print("Stopping teleop...")
-        if not self.numerical and self.robot_interface is not None:
+        if not self.numerical_mode and self.robot_interface is not None:
             try:
                 self.robot_interface.cmd_zero_velocity()
             except Exception as e:
                 print(f"Failed to stop robot: {e}")
         self.gamepad.stop()
-        if not self.numerical and self.robot is not None:
+        if not self.numerical_mode and self.robot is not None:
             self.robot.stop()
 
 
@@ -445,7 +471,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    teleop = FlyingGripperTeleop(speed=args.speed, numerical=args.numerical)
+    speed = TeleopSpeed.from_str(args.speed)
+    teleop = FlyingGripperTeleop(speed=speed, numerical_mode=args.numerical)
     teleop.run()
 
 
