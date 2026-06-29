@@ -135,7 +135,66 @@ print("Solved joint positions:")
 solved_joints.pretty_print()
 ```
 
-### Example 2: Dynamic Task-Space Tracking (Velocity Control)
+### Example 2: Velocity Control
+
+This Examples utilizes `FlyingGripperVelocityController` to generate joint velocities to achieve a task space (gripper frame) velocity.
+
+```python
+import numpy as np
+import time
+
+from stretch4_body.robot.robot_client import RobotClient
+from stretch4_kinematics.stretch_interface import StretchInterface
+from stretch4_kinematics.controllers import FlyingGripperVelocityController
+
+# 1. Initialize hardware client and kinematics interface
+robot = RobotClient()
+robot.startup()
+interface = StretchInterface(robot=robot)
+interface.reset_odometry_offset()
+
+# 2. Instantiate tracking controller
+controller = FlyingGripperVelocityController()
+
+# Define target velocity (twist) in end-effector space
+target_twist = np.array([0.1, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+dt = 0.05  # Control loop timestep (20 Hz)
+move_time = 1.0  # seconds
+
+try:
+    print("Tracking target velocity... Press Ctrl+C to stop.")
+    start_time = time.time()
+    while time.time() - start_time < move_time:
+        # Query current state from hardware
+        current_pos = interface.get_joint_position()
+        current_vel = interface.get_joint_velocity()
+
+        # Update controller to get new joint velocity commands
+        v_cmd = controller.update(
+            dt=dt,
+            current_pos=current_pos,
+            current_vel=current_vel,
+            target_vel=target_twist
+        )
+
+        vel_str = np.array2string(v_cmd.to_numpy(), formatter={'float_kind': lambda x: f"{x:1.2f}"})
+        print(f"q_dot: {vel_str}", end="\r")
+
+        # Send command to physical robot
+        interface.cmd_velocities(v_cmd)
+        
+        time.sleep(dt)
+
+except KeyboardInterrupt:
+    print("\nStopping...")
+finally:
+    interface.cmd_zero_velocity()
+    robot.stop()
+
+```
+
+### Example 3: Dynamic Task-Space Tracking (Velocity Control)
 This example utilizes `FlyingGripperTrackingController` to dynamically generate joint velocities that drive the end effector to a target pose in real-time.
 
 ```python
