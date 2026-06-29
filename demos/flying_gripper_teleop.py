@@ -11,7 +11,9 @@ import numpy as np
 
 from stretch4_body.core.robot_params import RobotParams
 from stretch4_body.robot.robot_client import RobotClient
-from stretch4_kinematics.kinematic_models.tool_frame_kinematics import ToolFrameKinematics
+from stretch4_kinematics.controllers import (
+    FlyingGripperVelocityController
+)
 from stretch4_kinematics.state import (
     StretchJointPositions,
     StretchJointVelocities,
@@ -149,8 +151,8 @@ class FlyingGripperTeleop:
             self.robot_interface.reset_odometry_offset()
             self.current_pos = self.robot_interface.get_joint_position()
 
-        # Initialize kinematics solver
-        self.ik_solver = ToolFrameKinematics()
+        # Initialize velocity controller
+        self.controller = FlyingGripperVelocityController()
 
         # Configure velocity scaling profiles
         self._initialize_velocity_profiles(speed)
@@ -184,7 +186,12 @@ class FlyingGripperTeleop:
         self.acc_grip = params["stretch_gripper"]["motion"][motion_prof]["accel"]
 
     def _compute_gripper_frame_vels(
-        self, cmd: GamepadCommand, v_scale: float, w_scale: float, pitch_sign_mult: float
+        self,
+        dt: float,
+        cmd: GamepadCommand,
+        v_scale: float,
+        w_scale: float,
+        pitch_sign_mult: float,
     ) -> StretchJointVelocities:
         """
         Computes joint velocities for gripper-frame relative control.
@@ -203,19 +210,21 @@ class FlyingGripperTeleop:
         v_desired_6d = np.zeros(6)
         v_desired_6d[:3] = v_desired_lin
 
-        # Compute base, lift, arm velocities via stateless differential IK
-        v_joint = self.ik_solver.differential_ik(
-            self.current_pos,
-            "tool_attachment_site_link",
-            v_desired_6d,
+        # controller step
+        v_joint = self.controller.update(
+            dt=dt,
+            current_pos=self.current_pos,
+            current_vel=None,
+            target_vel=v_desired_6d,
         )
 
-        # Map wrist velocities directly from rotation commands
+        # Map wrist velocities directly from rotation commands (just for teleop purposes)
         v_joint.wrist_yaw += cmd.rot_change[0] * w_scale
         v_joint.wrist_pitch = cmd.rot_change[1] * w_scale * pitch_sign_mult
         v_joint.wrist_roll = cmd.rot_change[2] * w_scale
 
-        return v_joint
+        # re-apply velocity limits
+        return self.controller._enforce_joint_velocity_limits(v_joint)
 
     def _integrate_simulation_step(
         self, v_joint: StretchJointVelocities, dt: float
@@ -311,7 +320,7 @@ class FlyingGripperTeleop:
 
                 # Compute desired joint velocities based on control mode
                 v_joint = self._compute_gripper_frame_vels(
-                    cmd, v_scale, w_scale, pitch_sign_mult
+                    dt, cmd, v_scale, w_scale, pitch_sign_mult
                 )
 
                 # Check if any non-zero velocity is commanded

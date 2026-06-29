@@ -5,8 +5,8 @@ import pinocchio as pin
 
 from stretch4_kinematics.state.joint_positions import StretchJointPositions
 from stretch4_kinematics.state.joint_velocities import StretchJointVelocities
-from stretch4_kinematics.kinematic_models.tool_frame_kinematics import ToolFrameKinematics
-from stretch4_kinematics.controllers.base_controllers import StretchVelocityController
+from stretch4_kinematics.controllers.base_controllers import StretchTrackingController
+from stretch4_kinematics.controllers.flying_gripper_velocity_controller import FlyingGripperVelocityController
 
 class FlyingGripperTrackingState(Enum):
     """
@@ -18,14 +18,16 @@ class FlyingGripperTrackingState(Enum):
     FAIL = auto()
 
 
-class FlyingGripperTrackingController(StretchVelocityController):
+class FlyingGripperTrackingController(StretchTrackingController):
     def __init__(self):
         """
         Initializes the FlyingGripperController, setting up the PID gains,
-        integration states, deadband thresholds, and the internal kinematics solver.
+        integration states, deadband thresholds, and the internal velocity controller.
         """
         super().__init__()
-        self._kinematics_solver = ToolFrameKinematics()
+        self._velocity_controller = FlyingGripperVelocityController()
+        # Keep references for backward compatibility / internal calculations
+        self._kinematics_solver = self._velocity_controller._kinematics_solver
         self._state = FlyingGripperTrackingState.IDLE
 
         # task params
@@ -233,18 +235,13 @@ class FlyingGripperTrackingController(StretchVelocityController):
         v_desired = self._apply_gains(error, d_error, i_error)
         v_desired = self._apply_deadband(v_desired)
 
-        # compute joint velocities
-        dq = self._kinematics_solver.differential_ik(
+        # delegate to direct velocity controller
+        dq_limited = self._velocity_controller.update(
+            dt,
             current_pos,
-            "tool_attachment_site_link",
-            v_desired
+            current_vel,
+            v_desired,
+            wrist_lookahead_gain=self._wrist_jog_lookahead_gain
         )
-
-        # apply lookahead gain to wrist. accounts for move_by lags
-        dq.wrist_pitch *= self._wrist_jog_lookahead_gain
-        dq.wrist_yaw *= self._wrist_jog_lookahead_gain
-        dq.wrist_roll *= self._wrist_jog_lookahead_gain
-
-        dq_limited = self._enforce_joint_velocity_limits(dq)
 
         return dq_limited, self._state

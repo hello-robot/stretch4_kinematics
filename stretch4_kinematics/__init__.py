@@ -11,6 +11,8 @@ from stretch4_kinematics.kinematic_models import (
 )
 from stretch4_kinematics.controllers import (
     StretchVelocityController,
+    StretchTrackingController,
+    FlyingGripperVelocityController,
     FlyingGripperTrackingController,
     FlyingGripperTrackingState,
 )
@@ -24,6 +26,8 @@ __all__ = [
     "PlanarToolFrameKinematics",
     "CylindricalToolFrameKinematics",
     "StretchVelocityController",
+    "StretchTrackingController",
+    "FlyingGripperVelocityController",
     "FlyingGripperTrackingController",
     "FlyingGripperTrackingState",
 ]
