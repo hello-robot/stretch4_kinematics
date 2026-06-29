@@ -16,7 +16,7 @@ class StretchVelocityController:
         joint velocities for safety clamping.
         """
         # joint velocity limits
-        self._v_max = StretchJointVelocities(
+        self._v_max_abs = StretchJointVelocities(
             base_x=0.15,
             base_y=0.15,
             base_theta=np.deg2rad(60),
@@ -45,43 +45,43 @@ class StretchVelocityController:
         # clip each joint
         v_limited.base_x = np.clip(
             v_limited.base_x,
-            -self._v_max.base_x,
-            self._v_max.base_x
+            -self._v_max_abs.base_x,
+            self._v_max_abs.base_x
         )
         v_limited.base_y = np.clip(
             v_limited.base_y,
-            -self._v_max.base_y,
-            self._v_max.base_y
+            -self._v_max_abs.base_y,
+            self._v_max_abs.base_y
         )
         v_limited.base_theta = np.clip(
             v_limited.base_theta,
-            -self._v_max.base_theta,
-            self._v_max.base_theta
+            -self._v_max_abs.base_theta,
+            self._v_max_abs.base_theta
         )
         v_limited.lift = np.clip(
             v_limited.lift,
-            -self._v_max.lift,
-            self._v_max.lift
+            -self._v_max_abs.lift,
+            self._v_max_abs.lift
         )
         v_limited.arm = np.clip(
             v_limited.arm,
-            -self._v_max.arm,
-            self._v_max.arm
+            -self._v_max_abs.arm,
+            self._v_max_abs.arm
         )
         v_limited.wrist_yaw = np.clip(
             v_limited.wrist_yaw,
-            -self._v_max.wrist_yaw,
-            self._v_max.wrist_yaw
+            -self._v_max_abs.wrist_yaw,
+            self._v_max_abs.wrist_yaw
         )
         v_limited.wrist_pitch = np.clip(
             v_limited.wrist_pitch,
-            -self._v_max.wrist_pitch,
-            self._v_max.wrist_pitch
+            -self._v_max_abs.wrist_pitch,
+            self._v_max_abs.wrist_pitch
         )
         v_limited.wrist_roll = np.clip(
             v_limited.wrist_roll,
-            -self._v_max.wrist_roll,
-            self._v_max.wrist_roll
+            -self._v_max_abs.wrist_roll,
+            self._v_max_abs.wrist_roll
         )
         return v_limited
 
@@ -99,6 +99,41 @@ class StretchVelocityController:
         q_limited = copy.deepcopy(q_desired)
         # TODO: Implement limits
         return q_limited
+
+    def update(
+        self,
+        dt: float,
+        current_pos: StretchJointPositions,
+        current_vel: StretchJointVelocities,
+        target_vel: np.ndarray
+    ) -> StretchJointVelocities:
+        """
+        Abstract method to update the controller. Must be implemented by subclasses.
+
+        Provide either a target_pose, or a target_xyz and target_quat/target_rpy.
+        If target_pose is provided, the other arguments will be ignored.
+
+        Args:
+            dt (float): Time step since last update.
+            current_pos (StretchJointPositions): Current joint positions.
+            current_vel (StretchJointVelocities): Current joint velocities.
+            target_vel (np.ndarray): The desired task space velocity (6D twist).
+
+        Returns:
+            StretchJointVelocities: The computed joint velocities.
+        """
+        raise NotImplementedError()
+
+
+class StretchTrackingController:
+    """
+    Abstract class for tracking controllers.
+    """
+    def __init__(self):
+        """
+        Initializes the tracking controller.
+        """
+        pass
 
     def _parse_target_input(
         self,
@@ -160,7 +195,7 @@ class StretchVelocityController:
         target_xyz: np.ndarray = None,
         target_quat: np.ndarray = None,
         target_rpy: np.ndarray = None,
-    ):
+    ) -> StretchJointVelocities:
         """
         Abstract method to update the controller. Must be implemented by subclasses.
 
@@ -175,5 +210,8 @@ class StretchVelocityController:
             target_xyz (np.ndarray, optional): The desired position of the target frame in the world frame.
             target_quat (np.ndarray, optional): The desired orientation of the target frame as a quaternion (scalar-last: [x, y, z, w]).
             target_rpy (np.ndarray, optional): The desired orientation of the target frame as RPY angles (radians).
+
+        Returns:
+            StretchJointVelocities: The computed joint velocities.
         """
         raise NotImplementedError()
