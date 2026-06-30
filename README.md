@@ -2,6 +2,10 @@
 
 A kinematics and task-space control library designed for the Hello Robot Stretch 4. This repository provides solvers for forward kinematics (FK) and numerical inverse kinematics (IK) using [Pinocchio](https://github.com/stack-of-tasks/pinocchio) under the hood, and includes wrappers/controllers to easily track Cartesian poses and control the physical or simulated robot.
 
+## Development Notice
+
+This repository is currently under development. The code in this repo may be unstable, since we are actively conducting development in this branch. Since we have performed limited testing, you may encounter unexpected behaviors. Please exercise caution when using the code in this repository.
+
 ---
 
 ## Table of Contents
