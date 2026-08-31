@@ -103,7 +103,7 @@ Install this package in editable mode within your workspace:
 uv pip install -e .
 ```
 
-To run demos, use:
+To run demos and to use the provided `stretch_interface`, use:
 ```bash
 uv pip install -e ".[demos]"
 ```
