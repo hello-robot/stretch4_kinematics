@@ -218,4 +218,17 @@ class ToolFrameKinematics(StretchKinematics):
 
         ## TODO: 3x5 solution using reduced Jacobian in differential_ik
 
+    def nullspace_projection(self, q: StretchJointPositions, q_dot: StretchJointVelocities) -> np.ndarray:
+        v_full = q_dot.to_numpy()
+        J_full = pin.computeFrameJacobian(
+            self.model,
+            self.data,
+            q.to_pinocchio_q(),
+            self.model.getFrameId("tool_attachment_site_link"),
+            pin.ReferenceFrame.LOCAL
+        )
+        J_pinv = np.linalg.pinv(J_full)
+        P = np.eye(self.model.nv) - J_pinv @ J_full
+        return P @ v_full
+
 
