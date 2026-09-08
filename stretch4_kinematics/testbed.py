@@ -214,14 +214,20 @@ def test_controls_library():
     except ValueError as e:
         print(f"  Success: Raised expected ValueError: {e}")
 
+def test_nullspace_projection():
+    q = StretchJointPositions()
+    kinematics = ToolFrameKinematics()
+    kinematics.diff_ik_testbed(q)
+
 
 ###############################################
 def main():
-    test_load_urdf()
-    test_load_urdf_calibrated()
-    test_forward_kinematics()
-    test_kinematics_library()
-    test_controls_library()
+    # test_load_urdf()
+    # test_load_urdf_calibrated()
+    # test_forward_kinematics()
+    # test_kinematics_library()
+    # test_controls_library()
+    test_nullspace_projection()
 
 if __name__ == '__main__':
     main()

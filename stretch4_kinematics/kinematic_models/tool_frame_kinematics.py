@@ -174,3 +174,61 @@ class ToolFrameKinematics(StretchKinematics):
         v.wrist_yaw = -v.base_theta
 
         return v
+
+    def diff_ik_testbed(self, q: StretchJointPositions):
+        ## 6x8 solution
+        q_pin = q.to_pinocchio_q()
+
+        J_full = pin.computeFrameJacobian(
+            self.model,
+            self.data,
+            q_pin,
+            self.model.getFrameId("tool_attachment_site_link"),
+            pin.ReferenceFrame.LOCAL
+        )
+
+        print(np.round(J_full, 3))
+
+        ## SVD
+        U, S, Vh = np.linalg.svd(J_full)
+        print("U:\n", np.round(U, 3))
+        print("S:\n", np.round(S, 3))
+        print("Vh:\n", np.round(Vh, 3))
+
+        ## rank
+        rank = np.linalg.matrix_rank(J_full)
+        print("Rank of J_full:", rank)
+
+        ## orthonormal basis of nullspace
+        nullspace_basis = Vh[rank:].T
+        print("Orthonormal basis of nullspace:\n", np.round(nullspace_basis, 3))
+
+        print("\n"*3)
+
+        ## nullspace projection operator
+        n_dim = self.model.nv
+        J_pinv = np.linalg.pinv(J_full)
+        P = np.eye(n_dim) - J_pinv @ J_full
+        print("Nullspace projection operator P:\n", np.round(P, 3))
+
+        q_0 = np.zeros(self.model.nv)
+        q_0[1] = 0.1  # Example initialization for the second joint
+        q_null = P @ q_0
+        print("Projected q_0 into nullspace:\n", np.round(q_null, 3))
+
+        ## TODO: 3x5 solution using reduced Jacobian in differential_ik
+
+    def nullspace_projection(self, q: StretchJointPositions, q_dot: StretchJointVelocities) -> np.ndarray:
+        v_full = q_dot.to_numpy()
+        J_full = pin.computeFrameJacobian(
+            self.model,
+            self.data,
+            q.to_pinocchio_q(),
+            self.model.getFrameId("tool_attachment_site_link"),
+            pin.ReferenceFrame.LOCAL
+        )
+        J_pinv = np.linalg.pinv(J_full)
+        P = np.eye(self.model.nv) - J_pinv @ J_full
+        return P @ v_full
+
+
