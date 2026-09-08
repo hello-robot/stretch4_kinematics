@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-import sys
 import time
 import numpy as np
 
 from stretch4_body.robot.robot_client import RobotClient
 from stretch4_kinematics.stretch_interface import StretchInterface
-import stretch4_kinematics.kinematic_models.tool_frame_kinematics as toolframekinematics
 from stretch4_kinematics.kinematic_models.tool_frame_kinematics import ToolFrameKinematics
 from stretch4_kinematics.state import (
-    StretchJointPositions,
     StretchJointVelocities,
 )
 
