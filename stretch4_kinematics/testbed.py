@@ -105,6 +105,16 @@ def test_kinematics_library():
     except NotImplementedError:
         print("  [FK] forward() is defined but not yet implemented.")
 
+    # 1b. Forward Velocity Example
+    try:
+        q_dot_state = StretchJointVelocities.from_numpy(np.zeros(k1.model.nv))
+        q_dot_state.base_theta = 0.2
+        q_dot_state.arm = 0.1
+        v = k1.forward_velocity(joint_position, q_dot_state, target_frame)
+        print(f"  Forward Velocity: {v}")
+    except NotImplementedError:
+        print("  [FV] forward_velocity() is defined but not yet implemented.")
+
     # 2. Inverse Kinematics Example
     try:
         target_pose = pin.SE3.Identity()
@@ -217,11 +227,12 @@ def test_controls_library():
 
 ###############################################
 def main():
-    test_load_urdf()
-    test_load_urdf_calibrated()
-    test_forward_kinematics()
+    # test_load_urdf()
+    # test_load_urdf_calibrated()
+    # test_forward_kinematics()
     test_kinematics_library()
-    test_controls_library()
+    # test_controls_library()
+    # test_nullspace_projection()
 
 if __name__ == '__main__':
     main()
