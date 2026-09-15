@@ -139,7 +139,3 @@ Thumbs.db
 
 # Data
 *.png
-
-# UV lockfile for libraries
-uv.lock
-
