@@ -1,7 +1,6 @@
 from stretch4_kinematics.kinematic_models.base_kinematic_models import StretchKinematics
 
 class PlanarToolFrameKinematics(StretchKinematics):
-    # old "mode 2"
     def __init__(self, use_calibrated_urdf: bool = False):
         """
         Kinematic model for the gravity-aligned "Planar Tool Frame" control mode.
@@ -13,3 +12,6 @@ class PlanarToolFrameKinematics(StretchKinematics):
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
         """
         super().__init__(use_calibrated_urdf)
+        raise NotImplementedError(
+            "PlanarToolFrameKinematics is under active development and not yet implemented."
+        )

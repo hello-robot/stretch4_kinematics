@@ -1,3 +1,4 @@
+from stretch4_kinematics.version import __version__
 from stretch4_kinematics.state import (
     StretchJointPositions,
     StretchJointVelocities,
@@ -18,6 +19,7 @@ from stretch4_kinematics.controllers import (
 )
 
 __all__ = [
+    "__version__",
     "StretchJointPositions",
     "StretchJointVelocities",
     "Stretch4IKModes",
@@ -31,3 +33,4 @@ __all__ = [
     "FlyingGripperTrackingController",
     "FlyingGripperTrackingState",
 ]
+

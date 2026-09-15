@@ -1,7 +1,6 @@
 from stretch4_kinematics.kinematic_models.base_kinematic_models import StretchKinematics
 
 class CylindricalToolFrameKinematics(StretchKinematics):
-    # old "mode 4"
     def __init__(self, use_calibrated_urdf: bool = False):
         """
         Kinematic model for the constrained "Cylindrical" control mode.
@@ -13,3 +12,6 @@ class CylindricalToolFrameKinematics(StretchKinematics):
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
         """
         super().__init__(use_calibrated_urdf)
+        raise NotImplementedError(
+            "CylindricalToolFrameKinematics is under active development and not yet implemented."
+        )
