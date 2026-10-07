@@ -4,27 +4,32 @@ import pinocchio as pin
 from stretch4_kinematics.state.joint_positions import StretchJointPositions
 from stretch4_kinematics.state.joint_velocities import StretchJointVelocities
 from stretch4_kinematics.state.modes import Stretch4IKModes
-from stretch4_kinematics.kinematic_models.utils import _load_stretch4_urdf
+from stretch4_kinematics.kinematic_models.utils import DEFAULT_TOOL_NAME, _load_stretch4_urdf
 
 class StretchKinematics:
-    def __init__(self, use_calibrated_urdf: bool = False):
+    def __init__(self, use_calibrated_urdf: bool = False, tool_name: str = DEFAULT_TOOL_NAME):
         """
         Base class for handling the Pinocchio boilerplate for Stretch 4.
 
         Args:
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
+            tool_name (str): The end of arm tool: "eoa_wrist_dw4_tool_sg4" (default)
+                or "eoa_wrist_dw4_tool_pg4".
         """
+        self.tool_name = tool_name
         # use a full DOF model for control and forward kinematics
         self.model = _load_stretch4_urdf(
             ik_mode=Stretch4IKModes.BASE_PLANAR,
-            calibrated=use_calibrated_urdf
+            calibrated=use_calibrated_urdf,
+            tool_name=tool_name,
         )
         self.data = self.model.createData()
 
         # use the 6-dof model for inverse kinematics (no translation on base)
         self.model_ik = _load_stretch4_urdf(
             ik_mode=Stretch4IKModes.BASE_ROTATE,
-            calibrated=use_calibrated_urdf
+            calibrated=use_calibrated_urdf,
+            tool_name=tool_name,
         )
         self.data_ik = self.model_ik.createData()
 

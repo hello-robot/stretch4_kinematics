@@ -1,7 +1,8 @@
 from stretch4_kinematics.kinematic_models.base_kinematic_models import StretchKinematics
+from stretch4_kinematics.kinematic_models.utils import DEFAULT_TOOL_NAME
 
 class CylindricalToolFrameKinematics(StretchKinematics):
-    def __init__(self, use_calibrated_urdf: bool = False):
+    def __init__(self, use_calibrated_urdf: bool = False, tool_name: str = DEFAULT_TOOL_NAME):
         """
         Kinematic model for the constrained "Cylindrical" control mode.
         Locks base translation (X/Y) and all wrist orientation joints (yaw, pitch, roll). 
@@ -10,8 +11,9 @@ class CylindricalToolFrameKinematics(StretchKinematics):
 
         Args:
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
+            tool_name (str): The end of arm tool; see StretchKinematics.
         """
-        super().__init__(use_calibrated_urdf)
+        super().__init__(use_calibrated_urdf, tool_name)
         raise NotImplementedError(
             "CylindricalToolFrameKinematics is under active development and not yet implemented."
         )

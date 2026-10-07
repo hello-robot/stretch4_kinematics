@@ -4,10 +4,11 @@ import pinocchio as pin
 from stretch4_kinematics.state.joint_positions import StretchJointPositions
 from stretch4_kinematics.state.joint_velocities import StretchJointVelocities
 from stretch4_kinematics.kinematic_models.base_kinematic_models import StretchKinematics
+from stretch4_kinematics.kinematic_models.utils import DEFAULT_TOOL_NAME
 from stretch4_kinematics.kinematic_models.utils import _compute_limit_interpolation_ratio
 
 class ToolFrameKinematics(StretchKinematics):
-    def __init__(self, use_calibrated_urdf: bool = False):
+    def __init__(self, use_calibrated_urdf: bool = False, tool_name: str = DEFAULT_TOOL_NAME):
         """
         Kinematic model for the local "Tool Frame" relative control mode.
         Provides Cartesian translation relative to the robot's local tool plate / 
@@ -15,8 +16,9 @@ class ToolFrameKinematics(StretchKinematics):
 
         Args:
             use_calibrated_urdf (bool): Whether to use the calibrated URDF model.
+            tool_name (str): The end of arm tool; see StretchKinematics.
         """
-        super().__init__(use_calibrated_urdf)
+        super().__init__(use_calibrated_urdf, tool_name)
 
         # configuration for weighted-least-squares damping
         self._jacobian_weights = np.array([

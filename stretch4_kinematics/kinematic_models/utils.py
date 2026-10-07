@@ -11,9 +11,13 @@ from stretch4_urdf.utils.urdf_utils_generate_ik_urdfs import (
 )
 from stretch4_kinematics.state.modes import Stretch4IKModes
 
+DEFAULT_TOOL_NAME = "eoa_wrist_dw4_tool_sg4"
+SUPPORTED_TOOL_NAMES = ("eoa_wrist_dw4_tool_sg4", "eoa_wrist_dw4_tool_pg4")
+
 def _load_stretch4_urdf(
     ik_mode: Stretch4IKModes = Stretch4IKModes.BASE_PLANAR,
-    calibrated: bool = False
+    calibrated: bool = False,
+    tool_name: str = DEFAULT_TOOL_NAME,
 ) -> pin.Model:
     """
     Returns the URDF model for the Stretch 4 robot, modified with a planar base joint,
@@ -22,21 +26,27 @@ def _load_stretch4_urdf(
     Args:
         ik_mode (Stretch4IKModes): The base mode of the model.
         calibrated (bool): Whether to use the calibrated URDF model.
+        tool_name (str): The end of arm tool, one of SUPPORTED_TOOL_NAMES.
     
     Returns:
         pin.Model: The Pinocchio model for the Stretch 4 robot.
     """
+    if tool_name not in SUPPORTED_TOOL_NAMES:
+        raise ValueError(
+            f"Unsupported tool_name {tool_name!r}; expected one of {SUPPORTED_TOOL_NAMES}."
+        )
+
     if calibrated:
         urdf_string = get_urdf_calibrated(
             model_name="SE4",
             batch_name="francis",
-            tool_name="eoa_wrist_dw4_tool_sg4",
+            tool_name=tool_name,
         )
     else:
         urdf_string = get_urdf(
             model_name="SE4",
             batch_name="francis",
-            tool_name="eoa_wrist_dw4_tool_sg4",
+            tool_name=tool_name,
         )
 
     # Parse URDF string using yourdfpy
