@@ -155,6 +155,97 @@ class StretchKinematics:
 
         return q
 
+    def _task_priority_inverse_kinematics(
+        self,
+        model: pin.Model,
+        data: pin.Data,
+        target_frame: str,
+        target_pose: pin.SE3,
+        q_guess: np.ndarray = None,
+        max_iter: int = 200,
+        eps: float = 1e-4,
+        damp: float = 1e-6,
+        joint_scale: np.ndarray = None,
+        max_linear_step: float = 0.05,
+        max_angular_step: float = 0.2,
+        max_joint_step: float = None,
+    ) -> np.ndarray:
+        """
+        Inverse kinematics that solves position first and orientation only with what is left.
+
+        `_closed_loop_inverse_kinematics` solves all six pose errors in one
+        least-squares step with every joint at the same price. On a model with
+        exactly six joints that pins the solution: matching the orientation
+        exactly can need a large base turn, and the solver takes it. Here the
+        position step is solved first and the orientation step only in its null
+        space, so an orientation the arm cannot make costs nothing in position.
+
+        Args:
+            target_frame (str): The name of the frame to solve for.
+            target_pose (pin.SE3): The desired pose of the target frame in the world frame.
+            q_guess (np.ndarray, optional): Initial joint configuration. Defaults to neutral.
+            max_iter (int): Maximum number of iterations.
+            eps (float): Convergence tolerance on the capped pose error.
+            damp (float): Damping added to J J^T in each pseudo-inverse.
+            joint_scale (np.ndarray, optional): Per-velocity-DOF weights, length model.nv.
+                A joint scaled to s contributes s times as much to the same step, so
+                the solve reaches for a small-scaled joint only when the others cannot
+                do the job. Defaults to all ones.
+            max_linear_step (float): Cap on the position error fed to one step, in metres.
+            max_angular_step (float): Cap on the orientation error fed to one step, in radians.
+            max_joint_step (float, optional): Cap on any one joint's change per step.
+
+        Returns:
+            np.ndarray: The joint configuration solving the IK.
+        """
+        frame_id = model.getFrameId(target_frame)
+        q = q_guess.copy() if q_guess is not None else pin.neutral(model)
+        if model.nq == model.nv:
+            q = np.clip(q, model.lowerPositionLimit, model.upperPositionLimit)
+        scale = np.ones(model.nv) if joint_scale is None else np.asarray(joint_scale, dtype=float)
+
+        def clamp_norm(vector: np.ndarray, limit: float) -> np.ndarray:
+            norm = float(np.linalg.norm(vector))
+            return vector if norm <= limit or norm == 0.0 else vector * (limit / norm)
+
+        def damped_pinv(jacobian: np.ndarray) -> np.ndarray:
+            n = jacobian.shape[0]
+            return jacobian.T @ np.linalg.inv(jacobian @ jacobian.T + damp * np.eye(n))
+
+        for _ in range(max_iter):
+            pin.forwardKinematics(model, data, q)
+            pin.updateFramePlacements(model, data)
+            current = data.oMf[frame_id]
+
+            # World axes on both halves, to match the LOCAL_WORLD_ALIGNED Jacobian.
+            linear_error = clamp_norm(target_pose.translation - current.translation, max_linear_step)
+            angular_error = clamp_norm(
+                pin.log3(target_pose.rotation @ current.rotation.T), max_angular_step
+            )
+            if np.linalg.norm(np.concatenate([linear_error, angular_error])) < eps:
+                break
+
+            jacobian = pin.computeFrameJacobian(
+                model, data, q, frame_id, pin.ReferenceFrame.LOCAL_WORLD_ALIGNED
+            )
+            linear_jacobian = jacobian[:3] * scale
+            angular_jacobian = jacobian[3:] * scale
+
+            linear_inverse = damped_pinv(linear_jacobian)
+            dq = linear_inverse @ linear_error
+            null_space = np.eye(model.nv) - linear_inverse @ linear_jacobian
+            projected = angular_jacobian @ null_space
+            dq = dq + null_space @ (damped_pinv(projected) @ (angular_error - angular_jacobian @ dq))
+            dq = dq * scale
+            if max_joint_step is not None:
+                dq = np.clip(dq, -max_joint_step, max_joint_step)
+
+            q = pin.integrate(model, q, dq)
+            if model.nq == model.nv:
+                q = np.clip(q, model.lowerPositionLimit, model.upperPositionLimit)
+
+        return q
+
     def inverse_6dof_local(
         self,
         target_frame: str,
