@@ -1,8 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "hello-robot-stretch4-kinematics"
-version = "0.1.0"
+dynamic = ["version"]
+description = "Forward and Inverse Kinematic Solvers - Python API for Stretch 4 hardware"
+authors = [
+    { name="Hello Robot Inc.", email="support@hello-robot.com" }
+]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "hello-robot-stretch4-urdf>=2026.5.27",
     "numpy>=2.2.6",
@@ -10,15 +22,18 @@ dependencies = [
     "yourdfpy>=0.0.60",
 ]
 
+[project.urls]
+Homepage = "https://github.com/hello-robot/stretch4_kinematics"
+
 [project.optional-dependencies]
 demos = [
     "hello-robot-stretch4-body>=2026.8.21",
 ]
 
-[build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
+[tool.setuptools.dynamic]
+version = {attr = "stretch4_kinematics.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["stretch4_kinematics*"]
+

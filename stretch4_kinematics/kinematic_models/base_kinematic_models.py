@@ -67,6 +67,24 @@ class StretchKinematics:
         frame_id = self.model.getFrameId(target_frame)
         return self.data.oMf[frame_id]
 
+    def forward_velocity(self, q_state: StretchJointPositions, q_dot_state: StretchJointVelocities, target_frame: str) -> np.ndarray:
+        """
+        Computes the forward velocity of the specified target frame given the joint velocities.
+
+        Args:
+            q_state (StretchJointPositions): The robot's joint configuration.
+            q_dot_state (StretchJointVelocities): The joint velocities.
+            target_frame (str): The name of the frame to compute the forward velocity for.
+
+        Returns:
+            np.ndarray: The spatial velocity of the target frame.
+        """
+        frame_id = self.model.getFrameId(target_frame)
+        q = q_state.to_pinocchio_q()
+        J = pin.computeFrameJacobian(self.model, self.data, q, frame_id, pin.ReferenceFrame.LOCAL)
+        v = J @ q_dot_state.to_numpy()
+        return v
+
     def _closed_loop_inverse_kinematics(
         self,
         model: pin.Model,
