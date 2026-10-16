@@ -231,4 +231,70 @@ class ToolFrameKinematics(StretchKinematics):
         P = np.eye(self.model.nv) - J_pinv @ J_full
         return P @ v_full
 
+    def nullspace_base_control(
+        self,
+        q: StretchJointPositions,
+        v_ee_local_des: np.ndarray | None = None,
+        v_base_world_des: np.ndarray | None = None,
+        damping: float = 1e-3,
+    ) -> StretchJointVelocities:
+        """
+        Compute 8-DOF joint velocities that prioritize end-effector motion while
+        driving the mobile base in the world XY plane within the primary task's nullspace.
+
+        Args:
+            q: The robot's current 8-DOF joint configuration.
+            v_ee_local_des: Desired 6D end-effector spatial velocity in the local
+                tool frame. Defaults to zeros to keep the end-effector stationary.
+            v_base_world_des: Desired 2D linear base velocity [vx_world, vy_world]
+                in meters per second in the world frame. Defaults to zeros.
+            damping: Levenberg-Marquardt damping factor for the projected secondary
+                task pseudoinverse.
+
+        Returns:
+            StretchJointVelocities: The resulting 8-DOF joint velocity commands.
+        """
+        q_pin = q.to_pinocchio_q()
+        nv = self.model.nv  # 8 DOFs
+
+        # Primary Task: 6x8 End-Effector Jacobian (LOCAL frame)
+        J1 = pin.computeFrameJacobian(
+            self.model,
+            self.data,
+            q_pin,
+            self.model.getFrameId("tool_attachment_site_link"),
+            pin.ReferenceFrame.LOCAL,
+        )
+
+        # Damped pseudoinverse for the primary task velocity and exact pseudoinverse
+        # for the nullspace projector P1 so secondary motions do not leak into J1.
+        J1_pinv = J1.T @ np.linalg.inv(J1 @ J1.T + 1e-4 * np.eye(6))
+        P1 = np.eye(nv) - np.linalg.pinv(J1) @ J1
+
+        # Primary task velocity (0 if keeping EE fixed in space)
+        dx1 = np.zeros(6) if v_ee_local_des is None else v_ee_local_des
+        dq_primary = J1_pinv @ dx1
+
+        # Secondary Task: 2x8 Base XY Jacobian in World Frame.
+        # Pinocchio's JointModelPlanar parameterizes tangent velocities (q_dot[0], q_dot[1])
+        # in the local base_link frame, so we rotate by base_theta to map to world XY.
+        theta = q.base_theta
+        J2 = np.zeros((2, nv))
+        J2[0, 0], J2[0, 1] = np.cos(theta), -np.sin(theta)
+        J2[1, 0], J2[1, 1] = np.sin(theta), np.cos(theta)
+
+        # Project J2 into the nullspace of J1
+        J2_tilde = J2 @ P1  # Shape: (2, 8)
+
+        # Damped Least-Squares Pseudoinverse of J2_tilde
+        J2_tilde_pinv = J2_tilde.T @ np.linalg.inv(
+            J2_tilde @ J2_tilde.T + damping * np.eye(2)
+        )
+
+        # Combine Primary and Secondary Tasks (re-projecting through P1 for strict nullspace)
+        dx2 = np.zeros(2) if v_base_world_des is None else v_base_world_des
+        dq_secondary = P1 @ (J2_tilde_pinv @ (dx2 - J2 @ dq_primary))
+        dq_total = dq_primary + dq_secondary
+
+        return StretchJointVelocities.from_numpy(dq_total)
 
