@@ -11,6 +11,12 @@ from stretch4_urdf.utils.urdf_utils_generate_ik_urdfs import (
 )
 from stretch4_kinematics.state.modes import Stretch4IKModes
 
+ARM_JOINTS = ("arm_l1_joint", "arm_l2_joint", "arm_l3_joint", "arm_l4_joint")
+
+WRIST_ROLL_LIMITS = (np.deg2rad(-65.0), np.deg2rad(245.0))
+"""The wrist roll's travel on the robot (stretch4_body `SE4_wrist_roll_DW4` range_deg) and in
+stretch4_mujoco (`FLIP_WRIST_ROLL_RANGE`). The URDF has it mirrored, as [-245, 65] degrees."""
+
 DEFAULT_TOOL_NAME = "eoa_wrist_dw4_tool_sg4"
 SUPPORTED_TOOL_NAMES = ("eoa_wrist_dw4_tool_sg4", "eoa_wrist_dw4_tool_pg4")
 
@@ -52,8 +58,12 @@ def _load_stretch4_urdf(
     # Parse URDF string using yourdfpy
     robot_urdf = ud.URDF.load(io.BytesIO(urdf_string.encode('utf-8')))
 
-    # Apply IK modifications: clip joint limits, rigidify non-IK joints, and merge arm
-    robot_urdf = _make_ik_urdf(robot_urdf, is_merge_arm=True)
+    # Apply IK modifications: clip joint limits and rigidify non-IK joints. The arm is merged
+    # here rather than by stretch4_urdf's merge_arm(), which drops the inner links' offsets.
+    robot_urdf = _make_ik_urdf(robot_urdf, is_merge_arm=False)
+    _merge_arm(robot_urdf)
+    roll = robot_urdf.joint_map["wrist_roll_joint"]
+    roll.limit.lower, roll.limit.upper = WRIST_ROLL_LIMITS
 
     # Add virtual joint to the base in-place
     if ik_mode == Stretch4IKModes.BASE_ROTATE:
@@ -72,6 +82,35 @@ def _load_stretch4_urdf(
 
     # Load the model directly from the XML string
     return pin.buildModelFromXML(planar_urdf_string)
+
+
+def _merge_arm(robot_urdf: ud.URDF) -> None:
+    """
+    Replaces the four telescoping arm joints with one prismatic joint, in place, so that IK
+    sees the arm as a single extension.
+
+    The last arm joint is reattached to the first one's parent with all four joints' origins
+    composed into its own, and the travel of all four. The middle three become fixed.
+
+    stretch4_urdf's `merge_arm()` does the same but sums `joint.origin[3, :3]`, the bottom row
+    of the homogeneous transform (always zero), so the merged joint keeps only the last link's
+    offset and the tool ends up ~41 mm further out than the real arm puts it.
+    """
+    joints = [robot_urdf.joint_map[name] for name in ARM_JOINTS]
+    first, last = joints[0], joints[-1]
+
+    origin = np.eye(4)
+    travel = 0.0
+    for joint in joints:
+        origin = origin @ (joint.origin if joint.origin is not None else np.eye(4))
+        if joint.limit is not None:
+            travel += joint.limit.upper
+
+    last.parent = first.parent
+    last.origin = origin
+    last.limit.upper = travel
+    for joint in joints[:-1]:
+        joint.type = "fixed"
 
 
 def _compute_limit_interpolation_ratio(

@@ -69,3 +69,26 @@ def test_not_implemented_subclasses():
 
     with pytest.raises(NotImplementedError):
         CylindricalToolFrameKinematics()
+
+
+def test_wrist_roll_limits_are_the_robots():
+    """The robot rolls -65..245 degrees; the URDF has that mirrored."""
+    import numpy as np
+    import pinocchio as pin
+    from stretch4_kinematics import StretchKinematics, StretchJointPositions
+
+    kinematics = StretchKinematics()
+    for model in (kinematics.model, kinematics.model_ik):
+        index = model.joints[model.getJointId("wrist_roll_joint")].idx_q
+        np.testing.assert_allclose(
+            [model.lowerPositionLimit[index], model.upperPositionLimit[index]],
+            np.deg2rad([-65.0, 245.0]),
+        )
+
+    # A pose that needs the gripper rolled over (180 degrees), out of reach with the URDF's limits.
+    q = StretchJointPositions(0.0, 0.0, 0.0, 0.8, 0.2, 0.3, 0.4, np.pi)
+    target = kinematics.forward(q, "grasp_center_link")
+    solution = kinematics.inverse_6dof_local("grasp_center_link", target_pose=target, q_guess=q)
+    reached = kinematics.forward(solution, "grasp_center_link")
+    assert np.linalg.norm(pin.log(reached.actInv(target)).vector) < 1e-3
+    assert np.deg2rad(-65.0) - 1e-6 <= solution.wrist_roll <= np.deg2rad(245.0) + 1e-6
