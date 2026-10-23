@@ -139,3 +139,6 @@ Thumbs.db
 
 # Data
 *.png
+
+# Package-specific
+scripts/testbed.py

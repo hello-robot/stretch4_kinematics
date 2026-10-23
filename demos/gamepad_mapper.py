@@ -1,8 +1,14 @@
 import time
+from stretch4_body.core.gamepad_controller import check_gamepad_teleop_singleton
 from standalone_gamepad import StandaloneGamePadController
 
 class GamepadMapper:
     def __init__(self):
+        # Acquire the gamepad teleop lock so this demo and stretch_gamepad_teleop
+        # can't drive the robot from the same gamepad at once. Held until exit.
+        if not check_gamepad_teleop_singleton():
+            raise RuntimeError("Gamepad teleop is already running!")
+
         # We start the gamepad thread
         # Setting print_dongle_status=True logs the connectivity
         self.controller = StandaloneGamePadController(print_dongle_status=True)
