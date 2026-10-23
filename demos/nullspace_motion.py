@@ -13,7 +13,7 @@ from stretch4_kinematics.state import (
 def main():
     print("=== Stretch 4 Nullspace Motion Demo ===")
     print("Moving base in a circle (X and Y components) with radius 0.2m and period 10s")
-    print("Velocities start at (0, 0) and target vector is passed into nullspace_projection.")
+    print("Velocities start at (0, 0) and target vector is passed into nullspace_projection_joint_space.")
     print("Press Ctrl+C to stop.\n")
 
     # 1. Instantiate robot client & stretch interface
@@ -60,8 +60,8 @@ def main():
             current_pos = interface.get_joint_position()
 
             # Compute nullspace projection of the target velocity
-            v_proj_np = kinematics.nullspace_projection(current_pos, target_q_dot)
-            v_cmd = StretchJointVelocities.from_numpy(v_proj_np)
+            v_cmd = kinematics.nullspace_projection_joint_space(current_pos, target_q_dot)
+            v_proj_np = v_cmd.to_numpy()
 
             # Command projected velocities to the robot rounded to 3 decimal places
             print(f"v_desired: {np.round(target_q_dot.to_numpy(), 3)}")

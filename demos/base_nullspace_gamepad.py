@@ -119,19 +119,19 @@ def run_base_nullspace_teleop(
 
             v_world_x = float(v_desired_stick[0]) * speed_scale * speed_mult
             v_world_y = float(v_desired_stick[1]) * speed_scale * speed_mult
-            v_base_world_des = np.array([v_world_x, v_world_y])
+            v_base_world_desired = np.array([v_world_x, v_world_y])
 
             is_active = (abs(v_world_x) > 1e-4 or abs(v_world_y) > 1e-4)
 
             if is_active:
                 current_ee_pose = kinematics.forward(current_pos, target_frame)
                 ee_err_local = pin.log(current_ee_pose.actInv(initial_ee_pose)).vector
-                v_ee_local_des = kp_ee * ee_err_local
+                v_ee_local_desired = kp_ee * ee_err_local
 
                 v_cmd = kinematics.nullspace_base_control(
                     q=current_pos,
-                    v_ee_local_des=v_ee_local_des,
-                    v_base_world_des=v_base_world_des,
+                    v_ee_local_desired=v_ee_local_desired,
+                    v_base_world_desired=v_base_world_desired,
                 )
 
                 if numerical:
