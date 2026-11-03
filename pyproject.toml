@@ -18,6 +18,9 @@ classifiers = [
 dependencies = [
     "hello-robot-stretch4-urdf>=2026.5.27",
     "numpy>=2.2.6",
+    # pinocchio/cmeel-urdfdom wheels link libtinyxml2.so.11, but cmeel-urdfdom does not
+    # pin a tinyxml2 version, so pip keeps an old 10.x install. We pin it explicitly:
+    "cmeel-tinyxml2>=11",
     "pin>=4.0.0",
     "yourdfpy>=0.0.60",
 ]
